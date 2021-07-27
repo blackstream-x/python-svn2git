@@ -3,20 +3,29 @@
 
 """
 
-Script file name
+svn2git.py
 
-Description, Copyright, License etc.
+Adapted from <https://github.com/nirvdrum/svn2git>
+(Ruby tool for importing existing svn projects into git)
+
+Python port (c) 2021 by Rainer Schwarzbach
+
+License: MIT, see LICENSE file
 
 """
 
 
 import argparse
+import locale
 import logging
-import os.path
+import os
 import re
-import shlex
 import subprocess
 import sys
+
+# local module
+
+import processwrappers
 
 
 #
@@ -26,12 +35,37 @@ import sys
 
 DEFAULT_AUTHORS_FILE = '~/.svn2git/authors'
 DEFAULT_BRANCHES = 'branches'
+DEFAULT_TAGS = 'tags'
+DEFAULT_TRUNK = 'trunk'
 
 MESSAGE_FORMAT_PURE = '%(message)s'
 MESSAGE_FORMAT_WITH_LEVELNAME = '%(levelname)-8s\u2551 %(message)s'
 
+PRX_SVNTAGS_PREFIX = re.compile(r'svn/tags/')
+
 RETURNCODE_OK = 0
 RETURNCODE_ERROR = 1
+
+locale.setlocale(locale.LC_ALL, '')
+ENCODING = locale.getpreferredencoding()
+
+
+#
+# Helper Functions
+#
+
+
+def exit_with_error(msg, *args):
+    """Exit after logging the given error message
+    (which may stretch over multiple lines).
+    """
+    if args:
+        msg = msg % args
+    #
+    for line in msg.splitlines():
+        logging.error(line)
+    #
+    sys.exit(RETURNCODE_ERROR)
 
 
 #
@@ -39,78 +73,19 @@ RETURNCODE_ERROR = 1
 #
 
 
-...
-
-
-#
-# Functions
-#
-
-
-...
-
-
-def run_command(cmd, exit_on_error=True, printout_output=False):
-    """Run the specified command and return its output
-    In the first iteration: simple stdout and stderr capturing,
-    later versions might add streaming output
-    """
-    if isinstance(cmd, str):
-        cmd = shlex.split(cmd)
-    #
-    logging.debug('Running command: %s', cmd)
-    try:
-        command_result = subprocess.run(
-            cmd,
-            check=exit_on_error,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
-        logging.error('Command failed: %s', cmd)
-        sys.exit(RETURNCODE_ERROR)
-    #
-    output = command_result.stdout.decode()
-    if printout_output:
-        print(output)
-    else:
-        for line in output.splitlines():
-            logging.debug(line)
-        #
-    #
-    return output
-
-
-def exit_with_error(msg):
-    """Exit with an error message"""
-    logging.error(msg)
-    sys.exit(RETURNCODE_ERROR)
-
-
-def verify_working_tree_is_clean():
-    """Check if there are no pending local changes"""
-    tree_status = run_command('git status --porcelain --untracked-files=no')
-    if tree_status.strip():
-        exit_with_error(
-            'You have local pending changes.'
-            ' The working tree must be clean in order to continue.')
-    #
-
-
 class Migration:
 
-    """SVN -> git migration"""
+    """Subversion -> Git migration"""
 
     def __init__(self, arguments):
         """Define instance variables"""
         self.options = arguments
-        #self.url = self.options.url
-        config_status = run_command(
-            'git config --local --get user.name',
-            exit_on_error=False)
+        # self.url = self.options.url
+        self.__git_config_command = 'git config --local'.split()
+        config_status = self.__do_git_config(
+            '--get', 'user.name', exit_on_error=False)
         if 'unknown option' in config_status.lower():
-            self.git_config_command = 'git config'
-        else:
-            self.git_config_command = 'git config --local'
+            self.__git_config_command = 'git config'.split()
         #
         self.local_branches = []
         self.remote_branches = []
@@ -118,48 +93,58 @@ class Migration:
 
     def run(self):
         """Execute the migration depending on the arguments"""
-        if self.options.rebase:
-            self.get_branches()
-        elif self.options.rebasebranch:
-            self.get_rebasebranch()
+        if self.options.rebase or self.options.rebasebranch:
+            self._verify_working_tree_is_clean()
+            self._get_branches()
+            if self.options.rebasebranch:
+                self._get_rebasebranch()
+            #
         else:
-            self.clone()
+            self._clone()
         #
-        self.fix_branches()
-        self.fix_tags()
-        self.fix_trunk()
-        self.optimize_repos()
+        self._fix_branches()
+        self._fix_tags()
+        self._fix_trunk()
+        self._optimize_repos()
         return RETURNCODE_OK
 
-    def get_branches(self):
-        """Get the list of local and remote branches,
-        taking care to ignore console color codes and ignoring the
-        '*' character used to indicate the currently selected branch.
+    @staticmethod
+    def run_command(command,
+                    exit_on_error=True,
+                    print_output=False,
+                    **kwargs):
+        """Run the specified command and return its output
+        In the first iteration: simple stdout and stderr capturing,
+        later versions might add streaming output
         """
-        branches = {}
-        for branch_type in 'lr':
-            branches[branch_type] = []
-            for found_branch in run_command(
-                    f'git branch -{branch_type} --no-color').splitlines():
-                found_branch = found_branch.replace('*', '').strip()
-                if found_branch:
-                    branches[branch_type].append(found_branch)
-                #
+        kwargs.update(
+            dict(check=exit_on_error,
+                 stdout=subprocess.PIPE,
+                 stderr=subprocess.STDOUT,
+                 loglevel=logging.DEBUG))
+        command_result = processwrappers.get_command_result(
+            command, **kwargs)
+        output = command_result.stdout.decode(ENCODING)
+        if print_output:
+            print(output)
+        else:
+            for line in output.splitlines():
+                logging.debug(line)
             #
         #
-        self.local_branches = branches['l']
-        self.remote_branches = branches['r']
-        # Tags are remote branches that start with "tags/".
-        self.tags = [
-            single_branch for single_branch in self.remote_branches
-            if single_branch.startswith('tags/')]
+        return output
 
-    def get_rebasebranch(self):
-        """..."""
-        raise NotImplementedError
+    def __do_git_config(self, *args, exit_on_error=True, print_output=False):
+        """Execute the stored git config command with
+        the provided arguments
+        """
+        return self.run_command(
+            self.__git_config_command + args,
+            exit_on_error=exit_on_error,
+            print_output=print_output)
 
-    def clone(self):
-        """..."""
+    def __do_git_svn_init(self):
+        """Execute the 'git svn init' command"""
         command = 'git svn init --prefix=svn/'.split()
         if self.options.username:
             command.append(f'--username={self.options.username}')
@@ -175,88 +160,212 @@ class Migration:
         #
         if self.options.rootistrunk:
             command.append(f'--trunk={self.options.url}')
-            run_command(command, exit_on_error=True, printout_output=True)
-        else:
-            if not self.options.notrunk:
-                command.append(f'--trunk={self.options.trunk}')
-            #
-            if not self.options.notags:
-                for tag in self.options.tags:
-                    command.append(f'--tags={tag}')
-                #
-            #
-            if not self.options.nobranches:
-                for branch in self.options.branches:
-                    command.append(f'--branches={branch}')
-                #
-            #
-            command.append(self.options.url)
-            run_command(command, exit_on_error=True, printout_output=True)
+            return self.run_command(
+                command, exit_on_error=True, print_output=True)
         #
-        if os.path.isfile(self.options.authors):
-            run_command([
-                self.git_config_command,
-                'svn.authorsfile',
-                self.options.authors])
+        if self.options.trunk_prefix:
+            command.append(f'--trunk={self.options.trunk_prefix}')
         #
+        for tags_prefix in self.options.tags_prefixes:
+            command.append(f'--tags={tags_prefix}')
+        #
+        for branches_prefix in self.options.branches_prefixes:
+            command.append(f'--branches={branches_prefix}')
+        #
+        command.append(self.options.url)
+        return self.run_command(
+            command, exit_on_error=True, print_output=True)
+
+    def __do_git_svn_fetch(self):
+        """Execute the 'git svn fetch' command"""
         command = 'git svn fetch'.split()
         if self.options.revision:
             revisions_range = self.options.revision.split(':')
-            if len(revisions_range) < 2:
-                revisions_range.append('HEAD')
+            from_revision = revisions_range[0]
+            try:
+                to_revision = revisions_range[1]
+            except IndexError:
+                to_revision = 'HEAD'
             #
-            command.extend(('-r', ':'.join(revisions_range[:2])))
+            command.extend(('-r', f'{from_revision}:{to_revision}'))
         #
         if self.options.exclude:
             exclude_prefixes = []
-            if not self.options.notrunk:
-                exclude_prefixes.append(f'{self.options.trunk}[/]')
+            if self.options.trunk_prefix:
+                exclude_prefixes.append(f'{self.options.trunk_prefix}[/]')
             #
-            if not self.options.notags:
-                for tag in self.options.tags:
-                    exclude_prefixes.append(f'{tag}[/][^/]+[/]')
-                #
+            for tags_prefix in self.options.tags_prefixes:
+                exclude_prefixes.append(f'{tags_prefix}[/][^/]+[/]')
             #
-            if not self.options.nobranches:
-                for branch in self.options.branches:
-                    exclude_prefixes.append(f'{branch}[/][^/]+[/]')
-                #
+            for branches_prefix in self.options.branches_prefixes:
+                exclude_prefixes.append(f'{branches_prefix}[/][^/]+[/]')
             #
             regex = '^(?:%s)(?:%s)' % (
                 '|'.join(exclude_prefixes),
                 '|'.join(self.options.exclude))
             command.append(f'--ignore-paths={regex}')
         #
-        run_command(command, exit_on_error=True, printout_output=True)
-        self.get_branches()
+        return self.run_command(
+            command, exit_on_error=True, print_output=True)
 
-    def fix_branches(self):
+    def _get_branches(self):
+        """Get the list of local and remote branches,
+        taking care to ignore console color codes and ignoring the
+        '*' character used to indicate the currently selected branch.
+        """
+        branches = {}
+        for branch_type in ('-l', '-r'):
+            branches[branch_type] = []
+            for found_branch in self.run_command((
+                    'git', 'branch', branch_type, '--no-color')).splitlines():
+                found_branch = found_branch.replace('*', '').strip()
+                if found_branch:
+                    branches[branch_type].append(found_branch)
+                #
+            #
+        #
+        self.local_branches = branches['-l']
+        self.remote_branches = branches['-r']
+        # Tags are remote branches that start with "tags/".
+        self.tags = [
+            single_branch for single_branch in self.remote_branches
+            if single_branch.startswith('tags/')]
+
+    def _get_rebasebranch(self):
+        """Rebase the specified branch"""
+        local_branch_candidates = [
+            branch for branch in self.local_branches
+            if branch == self.options.rebasebranch]
+        remote_branch_candidates = [
+            branch for branch in self.remote_branches
+            if self.options.rebasebranch in branch]
+        try:
+            found_local_branch = local_branch_candidates.pop()
+        except IndexError:
+            exit_with_error(
+                'No local branches named %r found.',
+                self.options.rebasebranch)
+        #
+        if local_branch_candidates:
+            exit_with_error(
+                'Too many matching local branches found: %s, %s.',
+                found_local_branch,
+                ', '.join(local_branch_candidates))
+        #
+        if not remote_branch_candidates:
+            exit_with_error(
+                'No remote branches named %r found.',
+                self.options.rebasebranch)
+        #
+        if len(remote_branch_candidates) > 2:
+            # 1 if remote is not pushed, 2 if its pushed to remote
+            exit_with_error(
+                'Too many matching remote branches found: %s.',
+                ', '.join(remote_branch_candidates))
+        #
+        self.local_branches = [found_local_branch]
+        self.remote_branches = remote_branch_candidates
+        logging.info('Found local branch %r.', found_local_branch)
+        logging.info(
+            'Found remote branches %s.'
+            ' and '.join(repr(branch) for branch in self.remote_branches))
+        # We only rebase the specified branch
+        self.tags = []
+
+    def _clone(self):
+        """..."""
+        self.__do_git_svn_init()
+        if os.path.isfile(self.options.authors):
+            self.__do_git_config('svn.authorsfile', self.options.authors)
+        #
+        self.__do_git_svn_fetch()
+        self._get_branches()
+
+    def _fix_branches(self):
         """..."""
         raise NotImplementedError
 
-    def fix_tags(self):
+    def _fix_tags(self):
+        """Convert the tags/* branches to git tags"""
+        parameters_to_save = ('user.name', 'user.emails')
+        saved_originals = {
+            key: self.__do_git_config(
+                '--get', key, exit_on_error=False).strip()
+            for key in parameters_to_save}
+        pretty_format = dict(
+            subject='%s',
+            commit_date='%ci',
+            author_name='%an',
+            author_email='%ae')
+        env = dict(os.environ)
+        try:
+            for tag_name in self.tags:
+                tag_name = tag_name.strip()
+                tag_id = PRX_SVNTAGS_PREFIX.sub('', tag_name)
+                commit_data = {
+                    key: self.run_command((
+                        'git', 'log', '-1',
+                        f'--pretty=format:{value}', tag_name))
+                    for (key, value) in pretty_format.items()}
+                self.__do_git_config(
+                    'user.name', commit_data['author_name'])
+                self.__do_git_config(
+                    'user.email', commit_data['author_email'])
+                original_git_committer_date = env.get('GIT_COMMITTER_DATE')
+                env['GIT_COMMITTER_DATE'] = commit_data['commit_date']
+                self.run_command((
+                    'git', 'tag', '-a', '-m', commit_data['subject'],
+                    tag_id, tag_name), env=env)
+                if original_git_committer_date is None:
+                    del env['GIT_COMMITTER_DATE']
+                else:
+                    env['GIT_COMMITTER_DATE'] = original_git_committer_date
+                #
+                self.run_command(('git', 'branch', '-d', '-r', tag_name))
+            #
+        finally:
+            # We only change the git config values
+            # if there are self.tags available.
+            # So it stands to reason we should revert them only in that case.
+            if self.tags:
+                for (key, value) in saved_originals.items():
+                    if value:
+                        self.__do_git_config(key, value)
+                    else:
+                        self.__do_git_config('--unset', key)
+                    #
+                #
+            #
+        #
+
+    def _fix_trunk(self):
         """..."""
         raise NotImplementedError
 
-    def fix_trunk(self):
-        """..."""
-        raise NotImplementedError
-
-    def optimize_repos(self):
+    def _optimize_repos(self):
         """Optimize the git repository"""
-        run_command("git gc")
+        self.run_command("git gc")
+
+    def _verify_working_tree_is_clean(self):
+        """Check if there are no pending local changes"""
+        tree_status = self.run_command(
+            'git status --porcelain --untracked-files=no'.split())
+        if tree_status.strip():
+            exit_with_error(
+                'You have local pending changes.\n'
+                ' The working tree must be clean in order to continue.')
+        #
+
+
+#
+# Functions
+#
 
 
 def __get_arguments():
     """Parse command line arguments"""
     argument_parser = argparse.ArgumentParser(
         description='Description')
-    def exit_with_help_message(msg):
-        """Show the message and the script usage, then exit"""
-        print(f'Error starting script: {msg}\n')
-        argument_parser.print_help()
-        sys.exit()
-    #
     argument_parser.set_defaults(loglevel=logging.INFO)
     argument_parser.add_argument(
         '-v', '--verbose',
@@ -273,22 +382,25 @@ def __get_arguments():
         help='Password for transports that need it (http(s), svn)')
     argument_parser.add_argument(
         '--trunk',
+        dest='trunk_prefix',
         metavar='TRUNK_PATH',
-        default='trunk',
+        default=DEFAULT_TRUNK,
         help='Subpath to trunk from repository URL (default: %(default)s)')
     argument_parser.add_argument(
         '--branches',
+        dest='branches_prefixes',
         metavar='BRANCHES_PATH',
         nargs='+',
         help='Subpath to branches from repository URL (default: %s);'
         ' can be used multiple times' % DEFAULT_BRANCHES)
     argument_parser.add_argument(
         '--tags',
+        dest='tags_prefixes',
         metavar='TAGS_PATH',
-        nargs='*',
+        nargs='+',
         default='tags',
-        help='Subpath to tags from repository URL (default: %(default)s);'
-        ' can be used multiple times')
+        help='Subpath to tags from repository URL (default: %s);'
+        ' can be used multiple times' % DEFAULT_TAGS)
     argument_parser.add_argument(
         '--rootistrunk',
         action='store_true',
@@ -350,15 +462,19 @@ def __get_arguments():
     arguments = argument_parser.parse_args()
     logging.basicConfig(format=MESSAGE_FORMAT_WITH_LEVELNAME,
                         level=arguments.loglevel)
-    if arguments.rootistrunk:
-        arguments.notrunk = True
-        arguments.nobranches = True
-        arguments.notags = True
+    # Set branches, tags and trunk prefixes
+    if arguments.rootistrunk or arguments.nobranches:
+        arguments.branches_prefixes = []
+    elif not arguments.branches_prefixes:
+        arguments.branches_prefixes = [DEFAULT_BRANCHES]
     #
-    if arguments.nobranches:
-        arguments.branches = []
-    elif not arguments.branches:
-        arguments.branches = [DEFAULT_BRANCHES]
+    if arguments.rootistrunk or arguments.notags:
+        arguments.tags_prefixes = []
+    elif not arguments.tags_prefixes:
+        arguments.tags_prefixes = [DEFAULT_TAGS]
+    #
+    if arguments.rootistrunk or arguments.notrunk:
+        arguments.trunk_prefix = None
     #
     return arguments
 

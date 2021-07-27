@@ -163,8 +163,8 @@ class LogExaminer:
         highest_returncode = RETURNCODE_OK
         current_base = 1
         logging.info(
-            f'Reading the SVN log in chunks of'
-            f' {self.options.chunk_size} revisions')
+            'Reading the SVN log in chunks of %s revisions',
+            self.options.chunk_size)
         while current_base <= self.head_revision:
             current_end = current_base + self.options.chunk_size - 1
             if current_end > self.head_revision:

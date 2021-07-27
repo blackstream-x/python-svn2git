@@ -14,6 +14,7 @@ License: MIT, see LICENSE file
 
 
 import logging
+import re
 import shlex
 import subprocess
 import sys
@@ -100,7 +101,7 @@ class Namespace(dict):
         """Object representation"""
         return '{0}({1})'.format(
             type(self).__name__,
-            super(Namespace, self).__repr__())
+            super().__repr__())
 
     def __dir__(self):
         """Members sequence"""
@@ -115,10 +116,10 @@ class Namespace(dict):
         #
         try:
             return self[name]
-        except KeyError:
+        except KeyError as error:
             raise AttributeError(
                 '{0!r} object has no attribute {1!r}'.format(
-                    type(self).__name__, name))
+                    type(self).__name__, name)) from error
         #
 
     def __setattr__(self, name, value):
@@ -260,5 +261,5 @@ def long_running_process_result(*arguments,
     # Return the process' returncode
     return process_info.process.wait()
 
-  
-# vim: fileencoding=utf-8 sw=4 ts=4 sts=4 expandtab autoindent syntax=python:  
+
+# vim: fileencoding=utf-8 sw=4 ts=4 sts=4 expandtab autoindent syntax=python:
