@@ -6,7 +6,7 @@ processwrappers
 
 Convenience wrappers around the subprocess module functionality
 
-Copyright (C) 2021 Rainer Schwarzbach
+Copyright (C) 2020-2021 Rainer Schwarzbach
 
 License: MIT, see LICENSE file
 
@@ -180,7 +180,7 @@ def __prepare_command(command, **kwargs):
     return converted_command, kwargs
 
 
-def get_command_result(command, **kwargs):
+def get_command_result(command, check=True, **kwargs):
     """Return the result from the specified command,
     i.e. a subprocess.CompletedProcess instance as returned
     by subprocess.run()
@@ -194,7 +194,8 @@ def get_command_result(command, **kwargs):
     command_keyword_arguments = dict(SUBPROCESS_DEFAULTS)
     converted_command, kwargs = __prepare_command(command, **kwargs)
     command_keyword_arguments.update(kwargs)
-    return subprocess.run(converted_command, **command_keyword_arguments)
+    return subprocess.run(
+        converted_command, check=check, **command_keyword_arguments)
 
 
 def get_streams_and_process(command, **kwargs):
@@ -226,40 +227,59 @@ def get_streams_and_process(command, **kwargs):
 
 
 def long_running_process_result(*arguments,
-                                encoding='UTF-8',
+                                check=True,
+                                stderr_loglevel=logging.ERROR,
+                                stdout_loglevel=logging.INFO,
+                                output_encoding='UTF-8',
                                 **kwargs):
-    """Return the returncode from the provided command.
+    """Blueprint for handling long-running processes:
     Log stdout output using logging.info,
     and stderr output using logging.error,
     both while the process is running.
-    Prefix all log lines with <log_line_prefix> if provided.
+    Return a CompletedProcess instance or raise a CalledProcessError
+    if check is True (the default) and the returncode is non-zero.
+
+    Also adapted from
+    <https://github.com/soxofaan/asynchronousfilereader>
     """
     kwargs['stderr'] = AsynchronousStreamReader
     kwargs['stdout'] = AsynchronousStreamReader
     if sys.platform != 'win32':
         kwargs['close_fds'] = True
     #
+    collected_stdout = []
+    collected_stderr = []
     process_info = get_streams_and_process(arguments, **kwargs)
     while not process_info.stdout.eof() or not process_info.stderr.eof():
-        # Show what we received from standard error.
+        # Show what we received from standard error
+        # and standard output,
+        # then sleep a short time before polling again
         for line in process_info.stderr.readlines():
-            stderr_line = line.decode(encoding).rstrip()
-            logging.error(stderr_line)
-            #
-        # Show what we received from standard output.
+            collected_stderr.append(line)
+            logging.log(
+                stderr_loglevel, line.decode(output_encoding).rstrip())
+        #
         for line in process_info.stdout.readlines():
-            stdout_line = line.decode(encoding).rstrip()
-            logging.info(stdout_line)
-        # Sleep a bit before polling the readers again.
+            collected_stdout.append(line)
+            logging.log(
+                stdout_loglevel, line.decode(output_encoding).rstrip())
         time.sleep(.1)
-    # Be tidy and join the threads we started.
+    # Cleanup:
+    # Wait for the threads to end and close the file descriptors
     process_info.stdout.join()
     process_info.stderr.join()
-    # Close subprocess' file descriptors.
     process_info.process.stdout.close()
     process_info.process.stderr.close()
-    # Return the process' returncode
-    return process_info.process.wait()
+    # Return the result
+    completed_process = subprocess.CompletedProcess(
+        args=process_info.process.args,
+        returncode=process_info.process.wait(),
+        stdout=b''.join(collected_stdout),
+        stderr=b''.join(collected_stderr))
+    if check:
+        completed_process.check_returncode()
+    #
+    return completed_process
 
 
 # vim: fileencoding=utf-8 sw=4 ts=4 sts=4 expandtab autoindent syntax=python:
