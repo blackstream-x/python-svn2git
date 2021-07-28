@@ -41,7 +41,8 @@ DEFAULT_TRUNK = 'trunk'
 MESSAGE_FORMAT_PURE = '%(message)s'
 MESSAGE_FORMAT_WITH_LEVELNAME = '%(levelname)-8s\u2551 %(message)s'
 
-PRX_SVNTAGS_PREFIX = re.compile(r'svn/tags/')
+PRX_SVNTAGS_PREFIX = re.compile(r'^svn/tags/')
+PRX_SVN_PREFIX = re.compile(r'^svn/')
 
 RETURNCODE_OK = 0
 RETURNCODE_ERROR = 1
@@ -115,25 +116,66 @@ class Migration:
                     print_output=False,
                     **kwargs):
         """Run the specified command and return its output
-        In the first iteration: simple stdout and stderr capturing,
-        later versions might add streaming output
+        (i.e. stdout and stderr in one).
         """
+        if print_output:
+            stdout_loglevel = logging.INFO
+        else:
+            stdout_loglevel = logging.DEBUG
+        #
         kwargs.update(
             dict(check=exit_on_error,
                  stdout=subprocess.PIPE,
                  stderr=subprocess.STDOUT,
-                 loglevel=logging.DEBUG))
-        command_result = processwrappers.get_command_result(
-            command, **kwargs)
+                 loglevel=stdout_loglevel))
+        try:
+            command_result = processwrappers.get_command_result(
+                command, **kwargs)
+        except subprocess.CalledProcessError as error:
+            exit_with_error(
+                'Command failed: %r\nReturncode: %s\nOutput:\n%s',
+                processwrappers.future_shlex_join(error.cmd),
+                error.returncode,
+                error.stdout.decode(ENCODING))
+        #
         output = command_result.stdout.decode(ENCODING)
-        if print_output:
-            print(output)
-        else:
-            for line in output.splitlines():
-                logging.debug(line)
-            #
+        for line in output.splitlines():
+            logging.log(stdout_loglevel, line)
         #
         return output
+
+    @staticmethod
+    def run_long_task(command,
+                      exit_on_error=True,
+                      print_output=False,
+                      **kwargs):
+        """Run the specified long running task and return its output
+        (i.e. stdout and stderr in one).
+        """
+        if print_output:
+            stdout_loglevel = logging.INFO
+            stderr_loglevel = logging.ERROR
+        else:
+            stdout_loglevel = logging.DEBUG
+            stderr_loglevel = logging.WARNING
+        #
+        kwargs.update(
+            dict(check=exit_on_error,
+                 stderr_loglevel=stderr_loglevel,
+                 stdout_loglevel=stdout_loglevel,
+                 loglevel=stdout_loglevel,
+                 output_encoding=ENCODING,
+                 all_to_stdout=True))
+        try:
+            command_result = processwrappers.get_command_result(
+                command, **kwargs)
+        except subprocess.CalledProcessError as error:
+            exit_with_error(
+                'Long task failed: %r\nReturncode: %s.',
+                processwrappers.future_shlex_join(error.cmd),
+                error.returncode)
+        #
+        return command_result.stdout.decode(ENCODING)
 
     def __do_git_config(self, *args, exit_on_error=True, print_output=False):
         """Execute the stored git config command with
