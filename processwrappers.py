@@ -182,6 +182,7 @@ def long_running_process_result(*arguments,
                                 check=True,
                                 stderr_loglevel=logging.ERROR,
                                 stdout_loglevel=logging.INFO,
+                                all_to_stdout=False,
                                 output_encoding='UTF-8',
                                 **kwargs):
     """Blueprint for handling long-running processes:
@@ -189,6 +190,7 @@ def long_running_process_result(*arguments,
     both while the process is running.
     Return a CompletedProcess instance or raise a CalledProcessError
     if check is True (the default) and the returncode is non-zero.
+    If all_to_stdout ist set True, redirect stderr to stdout.
 
     Also adapted from
     <https://github.com/soxofaan/asynchronousfilereader>
@@ -203,7 +205,11 @@ def long_running_process_result(*arguments,
     stdout_reader = process_info['stdout']
     stderr_reader = process_info['stderr']
     collected_stdout = []
-    collected_stderr = []
+    if all_to_stdout:
+        collected_stderr = collected_stdout
+    else:
+        collected_stderr = []
+    #
     while not stdout_reader.eof() or not stderr_reader.eof():
         # Show what has been received from stderr and stdout,
         # then sleep a short time before polling again
@@ -223,12 +229,18 @@ def long_running_process_result(*arguments,
     stdout_reader.join()
     process.stderr.close()
     process.stdout.close()
-    # Return the result
+    # Construct and return the result
+    stdout_data = b''.join(collected_stdout)
+    if all_to_stdout:
+        stderr_data = None
+    else:
+        stderr_data = b''.join(collected_stderr)
+    #
     completed_process = subprocess.CompletedProcess(
         args=process.args,
         returncode=process.wait(),
-        stdout=b''.join(collected_stdout),
-        stderr=b''.join(collected_stderr))
+        stdout=stdout_data,
+        stderr=stderr_data)
     if check:
         completed_process.check_returncode()
     #
