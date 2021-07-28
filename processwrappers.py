@@ -178,7 +178,7 @@ def get_streams_and_process(command, **kwargs):
     return process_info
 
 
-def long_running_process_result(*arguments,
+def long_running_process_result(command,
                                 check=True,
                                 stderr_loglevel=logging.ERROR,
                                 stdout_loglevel=logging.INFO,
@@ -200,7 +200,7 @@ def long_running_process_result(*arguments,
     if sys.platform != 'win32':
         kwargs['close_fds'] = True
     #
-    process_info = get_streams_and_process(arguments, **kwargs)
+    process_info = get_streams_and_process(command, **kwargs)
     process = process_info['process']
     stdout_reader = process_info['stdout']
     stderr_reader = process_info['stderr']
