@@ -80,7 +80,6 @@ class Migration:
     def __init__(self, arguments):
         """Define instance variables"""
         self.options = arguments
-        # self.url = self.options.url
         self.__git_config_command = 'git config --local'.split()
         config_status = self.__do_git_config(
             '--get', 'user.name', exit_on_error=False)
@@ -93,14 +92,16 @@ class Migration:
 
     def run(self):
         """Execute the migration depending on the arguments"""
-        if self.options.rebase or self.options.rebasebranch:
+        if self.options.svn_url:
+            self._clone()
+        else:
+            # --rebase or --rebasebranch specified
             self._verify_working_tree_is_clean()
-            self._get_branches()
+            if self.options.rebase:
+                self._get_branches()
             if self.options.rebasebranch:
                 self._get_rebasebranch()
             #
-        else:
-            self._clone()
         #
         self._fix_branches()
         self._fix_tags()
@@ -159,7 +160,7 @@ class Migration:
             command.append('--no-minimize-url')
         #
         if self.options.rootistrunk:
-            command.append(f'--trunk={self.options.url}')
+            command.append(f'--trunk={self.options.svn_url}')
             return self.run_command(
                 command, exit_on_error=True, print_output=True)
         #
@@ -172,7 +173,7 @@ class Migration:
         for branches_prefix in self.options.branches_prefixes:
             command.append(f'--branches={branches_prefix}')
         #
-        command.append(self.options.url)
+        command.append(self.options.svn_url)
         return self.run_command(
             command, exit_on_error=True, print_output=True)
 
@@ -213,26 +214,27 @@ class Migration:
         taking care to ignore console color codes and ignoring the
         '*' character used to indicate the currently selected branch.
         """
-        branches = {}
+        found_branches = {}
         for branch_type in ('-l', '-r'):
-            branches[branch_type] = []
-            for found_branch in self.run_command((
+            found_branches[branch_type] = []
+            for branch in self.run_command((
                     'git', 'branch', branch_type, '--no-color')).splitlines():
-                found_branch = found_branch.replace('*', '').strip()
-                if found_branch:
-                    branches[branch_type].append(found_branch)
+                branch = branch.replace('*', '').strip()
+                if branch:
+                    found_branches[branch_type].append(branch)
                 #
             #
         #
-        self.local_branches = branches['-l']
-        self.remote_branches = branches['-r']
+        self.local_branches = found_branches['-l']
+        self.remote_branches = found_branches['-r']
         # Tags are remote branches that start with "tags/".
         self.tags = [
             single_branch for single_branch in self.remote_branches
-            if single_branch.startswith('tags/')]
+            if PRX_SVNTAGS_PREFIX.match(single_branch)]
 
     def _get_rebasebranch(self):
         """Rebase the specified branch"""
+        self._get_branches()    # "Explicit is better than implicit"
         local_branch_candidates = [
             branch for branch in self.local_branches
             if branch == self.options.rebasebranch]
@@ -455,7 +457,7 @@ def __get_arguments():
         '--rebasebranch',
         help='Rebase the specified branch')
     mutex_group.add_argument(
-        'url',
+        'svn_url',
         metavar='SVN_URL',
         nargs='?',
         help='Subversion repository URL')
