@@ -83,54 +83,6 @@ class AsynchronousStreamReader(threading.Thread):
         #
 
 
-class Namespace(dict):
-
-    """A dict subclass that exposes its items as attributes.
-
-    Adapted from:
-    ActiveState Code » Recipes » A Simple Namespace Class (Python recipe)
-    <http://code.activestate.com/recipes/577887-a-simple-namespace-class/>
-
-    Warning: Namespace instances only have direct access to the
-    attributes defined in the visible_attributes tuple
-    """
-
-    visible_attributes = ('items', )
-
-    def __repr__(self):
-        """Object representation"""
-        return '{0}({1})'.format(
-            type(self).__name__,
-            super().__repr__())
-
-    def __dir__(self):
-        """Members sequence"""
-        return tuple(self)
-
-    def __getattribute__(self, name):
-        """Access a visible attribute
-        or return an existing dict member
-        """
-        if name in type(self).visible_attributes:
-            return object.__getattribute__(self, name)
-        #
-        try:
-            return self[name]
-        except KeyError as error:
-            raise AttributeError(
-                '{0!r} object has no attribute {1!r}'.format(
-                    type(self).__name__, name)) from error
-        #
-
-    def __setattr__(self, name, value):
-        """Set an attribute"""
-        self[name] = value
-
-    def __delattr__(self, name):
-        """Delete an attribute"""
-        del self[name]
-
-
 #
 # Functions
 #
@@ -200,10 +152,10 @@ def get_command_result(command, check=True, **kwargs):
 
 def get_streams_and_process(command, **kwargs):
     """Start a subprocess using subprocess.Popen().
-    Return a namespace containing an Asynchronous StreamReader
+    Return a dict containing an Asynchronous StreamReader
     instance for each output stream that was specified
     (named like the stream: stderr or stdout),
-    and the Popen instnace as process.
+    and the Popen instance as process.
     """
     converted_command, kwargs = __prepare_command(command, **kwargs)
     available_streams = ('stderr', 'stdout')
@@ -217,11 +169,11 @@ def get_streams_and_process(command, **kwargs):
             kwargs[stream_name] = current_stream
         #
     #
-    process_info = Namespace(
-        process=subprocess.Popen(converted_command, **kwargs))
+    started_process = subprocess.Popen(converted_command, **kwargs)
+    process_info = dict(process=started_process)
     for stream_name in streams_to_read:
         process_info[stream_name] = AsynchronousStreamReader(
-            getattr(process_info.process, stream_name))
+            getattr(started_process, stream_name))
     #
     return process_info
 
@@ -233,8 +185,7 @@ def long_running_process_result(*arguments,
                                 output_encoding='UTF-8',
                                 **kwargs):
     """Blueprint for handling long-running processes:
-    Log stdout output using logging.info,
-    and stderr output using logging.error,
+    Log stdout using stdout_loglevel and stderr using stderr_loglevel,
     both while the process is running.
     Return a CompletedProcess instance or raise a CalledProcessError
     if check is True (the default) and the returncode is non-zero.
@@ -247,33 +198,35 @@ def long_running_process_result(*arguments,
     if sys.platform != 'win32':
         kwargs['close_fds'] = True
     #
+    process_info = get_streams_and_process(arguments, **kwargs)
+    process = process_info['process']
+    stdout_reader = process_info['stdout']
+    stderr_reader = process_info['stderr']
     collected_stdout = []
     collected_stderr = []
-    process_info = get_streams_and_process(arguments, **kwargs)
-    while not process_info.stdout.eof() or not process_info.stderr.eof():
-        # Show what we received from standard error
-        # and standard output,
+    while not stdout_reader.eof() or not stderr_reader.eof():
+        # Show what has been received from stderr and stdout,
         # then sleep a short time before polling again
-        for line in process_info.stderr.readlines():
+        for line in stderr_reader.readlines():
             collected_stderr.append(line)
             logging.log(
                 stderr_loglevel, line.decode(output_encoding).rstrip())
         #
-        for line in process_info.stdout.readlines():
+        for line in stdout_reader.readlines():
             collected_stdout.append(line)
             logging.log(
                 stdout_loglevel, line.decode(output_encoding).rstrip())
         time.sleep(.1)
     # Cleanup:
     # Wait for the threads to end and close the file descriptors
-    process_info.stdout.join()
-    process_info.stderr.join()
-    process_info.process.stdout.close()
-    process_info.process.stderr.close()
+    stderr_reader.join()
+    stdout_reader.join()
+    process.stderr.close()
+    process.stdout.close()
     # Return the result
     completed_process = subprocess.CompletedProcess(
-        args=process_info.process.args,
-        returncode=process_info.process.wait(),
+        args=process.args,
+        returncode=process.wait(),
         stdout=b''.join(collected_stdout),
         stderr=b''.join(collected_stderr))
     if check:
