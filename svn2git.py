@@ -203,7 +203,7 @@ class Migration:
         #
         if self.options.rootistrunk:
             command.append(f'--trunk={self.options.svn_url}')
-            return self.run_command(
+            return self.run_long_task(
                 command, exit_on_error=True, print_output=True)
         #
         if self.options.trunk_prefix:
@@ -216,7 +216,7 @@ class Migration:
             command.append(f'--branches={branches_prefix}')
         #
         command.append(self.options.svn_url)
-        return self.run_command(
+        return self.run_long_task(
             command, exit_on_error=True, print_output=True)
 
     def __do_git_svn_fetch(self):
@@ -248,7 +248,7 @@ class Migration:
                 '|'.join(self.options.exclude))
             command.append(f'--ignore-paths={regex}')
         #
-        return self.run_command(
+        return self.run_long_task(
             command, exit_on_error=True, print_output=True)
 
     def _get_branches(self):
@@ -388,7 +388,7 @@ class Migration:
 
     def _optimize_repos(self):
         """Optimize the git repository"""
-        self.run_command("git gc")
+        self.run_long_task('git gc'.split())
 
     def _verify_working_tree_is_clean(self):
         """Check if there are no pending local changes"""
