@@ -50,6 +50,8 @@ RETURNCODE_ERROR = 1
 locale.setlocale(locale.LC_ALL, '')
 ENCODING = locale.getpreferredencoding()
 
+ENV = dict(os.environ)
+ENV['LANG'] = 'C'       # Prevent command output translation
 
 #
 # Helper Functions
@@ -81,12 +83,8 @@ class Migration:
     def __init__(self, arguments):
         """Define instance variables"""
         self.options = arguments
-        self.__git_config_command = 'git config --local'.split()
-        config_status = self.__do_git_config(
-            '--get', 'user.name', exit_on_error=False)
-        if 'unknown option' in config_status.lower():
-            self.__git_config_command = 'git config'.split()
-        #
+        self.__git_config_command = ('git', 'config', '--local')
+        self.initial_branch = 'master'
         self.local_branches = []
         self.remote_branches = []
         self.tags = []
@@ -154,10 +152,10 @@ class Migration:
         """
         if print_output:
             stdout_loglevel = logging.INFO
-            stderr_loglevel = logging.ERROR
+            stderr_loglevel = logging.WARNING
         else:
             stdout_loglevel = logging.DEBUG
-            stderr_loglevel = logging.WARNING
+            stderr_loglevel = logging.INFO
         #
         kwargs.update(
             dict(check=exit_on_error,
@@ -167,7 +165,7 @@ class Migration:
                  output_encoding=ENCODING,
                  all_to_stdout=True))
         try:
-            command_result = processwrappers.get_command_result(
+            command_result = processwrappers.long_running_process_result(
                 command, **kwargs)
         except subprocess.CalledProcessError as error:
             exit_with_error(
@@ -177,17 +175,17 @@ class Migration:
         #
         return command_result.stdout.decode(ENCODING)
 
-    def __do_git_config(self, *args, exit_on_error=True, print_output=False):
+    def __do_git_config(self, *args, **kwargs):
         """Execute the stored git config command with
         the provided arguments
         """
         return self.run_command(
             self.__git_config_command + args,
-            exit_on_error=exit_on_error,
-            print_output=print_output)
+            **kwargs)
 
     def __do_git_svn_init(self):
         """Execute the 'git svn init' command"""
+        logging.info('--- Do SVN Init ---')
         command = 'git svn init --prefix=svn/'.split()
         if self.options.username:
             command.append(f'--username={self.options.username}')
@@ -204,7 +202,7 @@ class Migration:
         if self.options.rootistrunk:
             command.append(f'--trunk={self.options.svn_url}')
             return self.run_long_task(
-                command, exit_on_error=True, print_output=True)
+                command, env=ENV, exit_on_error=True, print_output=True)
         #
         if self.options.trunk_prefix:
             command.append(f'--trunk={self.options.trunk_prefix}')
@@ -217,10 +215,11 @@ class Migration:
         #
         command.append(self.options.svn_url)
         return self.run_long_task(
-            command, exit_on_error=True, print_output=True)
+            command, env=ENV, exit_on_error=True, print_output=True)
 
     def __do_git_svn_fetch(self):
         """Execute the 'git svn fetch' command"""
+        logging.info('--- Do SVN Fetch ---')
         command = 'git svn fetch'.split()
         if self.options.revision:
             revisions_range = self.options.revision.split(':')
@@ -249,13 +248,14 @@ class Migration:
             command.append(f'--ignore-paths={regex}')
         #
         return self.run_long_task(
-            command, exit_on_error=True, print_output=True)
+            command, env=ENV, exit_on_error=True, print_output=True)
 
     def _get_branches(self):
         """Get the list of local and remote branches,
         taking care to ignore console color codes and ignoring the
         '*' character used to indicate the currently selected branch.
         """
+        logging.info('--- Get Branches ---')
         found_branches = {}
         for branch_type in ('-l', '-r'):
             found_branches[branch_type] = []
@@ -276,6 +276,7 @@ class Migration:
 
     def _get_rebasebranch(self):
         """Rebase the specified branch"""
+        logging.info('--- Get Rebasebranch ---')
         self._get_branches()    # "Explicit is better than implicit"
         local_branch_candidates = [
             branch for branch in self.local_branches
@@ -317,8 +318,14 @@ class Migration:
         self.tags = []
 
     def _clone(self):
-        """..."""
+        """Clone the Subversion repository"""
+        logging.info('=== Clone ===')
         self.__do_git_svn_init()
+        config_status = self.__do_git_config(
+            '--get', 'user.name', exit_on_error=False, env=ENV)
+        if 'unknown option' in config_status.lower():
+            self.__git_config_command = ('git', 'config')
+        #
         if os.path.isfile(self.options.authors):
             self.__do_git_config('svn.authorsfile', self.options.authors)
         #
@@ -326,12 +333,80 @@ class Migration:
         self._get_branches()
 
     def _fix_branches(self):
-        """..."""
-        raise NotImplementedError
+        """Fix branches"""
+        logging.info('--- Fix Branches ---')
+        svn_branches = {
+            branch for branch in set(self.remote_branches) - set(self.tags)
+            if PRX_SVN_PREFIX.match(branch)}
+        logging.debug('Found branches: %r', svn_branches)
+        if self.options.rebase:
+            self.run_long_task('git svn fetch', print_output=True)
+        #
+        cannot_setup_tracking_information = False
+        legacy_svn_branch_tracking_message_displayed = False
+        for branch in sorted(svn_branches):
+            branch = PRX_SVN_PREFIX.sub('', branch)
+            remote_svn_branch = f'remotes/svn/{branch}'
+            if self.options.rebase and (branch in self.local_branches
+                                        or branch == 'trunk'):
+                if branch =='trunk':
+                    local_branch = self.initial_branch
+                else:
+                    local_branch = branch
+                #
+                self.run_command(('git', 'checkout', '-f', local_branch))
+                self.run_command(('git', 'rebase', remote_svn_branch))
+                continue
+            #
+            if (branch in self.local_branches or branch == 'trunk'):
+                continue
+            #
+            untracked_checkout_command = (
+                'git', 'checkout', '-b', branch, remote_svn_branch)
+            if cannot_setup_tracking_information:
+                self.run_command(untracked_checkout_command)
+            else:
+                status = self.run_command(
+                    ('git', 'branch', '--track', branch, remote_svn_branch),
+                    exit_on_error=False, env=ENV)
+                # As of git 1.8.3.2, tracking information cannot be
+                # set up for remote SVN branches:
+                # <http://git.661346.n2.nabble.com/
+                #  git-svn-Use-prefix-by-default-td7594288.html#a7597159>
+                #
+                # Older versions of git can do it and it should
+                # be safe as long as remotes aren't pushed.
+                # Our --rebase option obviates the need
+                # for read-only tracked remotes, however.
+                # So, we'll deprecate the old option,
+                # informing those relying on the old behavior
+                # that they should use the newer --rebase option.
+                if 'Cannot setup tracking information' in status:
+                    cannot_setup_tracking_information = True
+                    self.run_command(untracked_checkout_command)
+                else:
+                    if not legacy_svn_branch_tracking_message_displayed:
+                        logging.warning('*' * 68)
+                        for line in (
+                                'svn2git warning: Tracking remote SVN branches'
+                                ' is deprecated.',
+                                'In a future release local branches'
+                                ' will be created without tracking.',
+                                'If you must resync your branches,'
+                                ' run: svn2git --rebase'):
+                            logging.warning(line)
+                        logging.warning('*' * 68)
+                        legacy_svn_branch_tracking_message_displayed = True
+                    #
+                    self.run_command(('git', 'checkout', branch))
+                #
+            #
+        #
 
     def _fix_tags(self):
-        """Convert the tags/* branches to git tags"""
-        parameters_to_save = ('user.name', 'user.emails')
+        """Convert the svn/tags/* branches to git tags"""
+        logging.info('--- Fix Tags ---')
+        parameters_to_save = ('user.name', 'user.email')
         saved_originals = {
             key: self.__do_git_config(
                 '--get', key, exit_on_error=False).strip()
@@ -341,7 +416,6 @@ class Migration:
             commit_date='%ci',
             author_name='%an',
             author_email='%ae')
-        env = dict(os.environ)
         try:
             for tag_name in self.tags:
                 tag_name = tag_name.strip()
@@ -355,15 +429,15 @@ class Migration:
                     'user.name', commit_data['author_name'])
                 self.__do_git_config(
                     'user.email', commit_data['author_email'])
-                original_git_committer_date = env.get('GIT_COMMITTER_DATE')
-                env['GIT_COMMITTER_DATE'] = commit_data['commit_date']
+                original_git_committer_date = ENV.get('GIT_COMMITTER_DATE')
+                ENV['GIT_COMMITTER_DATE'] = commit_data['commit_date']
                 self.run_command((
                     'git', 'tag', '-a', '-m', commit_data['subject'],
-                    tag_id, tag_name), env=env)
+                    tag_id, tag_name), env=ENV)
                 if original_git_committer_date is None:
-                    del env['GIT_COMMITTER_DATE']
+                    del ENV['GIT_COMMITTER_DATE']
                 else:
-                    env['GIT_COMMITTER_DATE'] = original_git_committer_date
+                    ENV['GIT_COMMITTER_DATE'] = original_git_committer_date
                 #
                 self.run_command(('git', 'branch', '-d', '-r', tag_name))
             #
@@ -383,15 +457,28 @@ class Migration:
         #
 
     def _fix_trunk(self):
-        """..."""
-        raise NotImplementedError
+        """Fix trunk."""
+        logging.info('--- Fix Trunk ---')
+        if self.options.rebase and 'trunk' in self.remote_branches:
+            for command in (
+                    ('git', 'checkout', 'svn/trunk'),
+                    ('git', 'branch', '-D', self.initial_branch),
+                    ('git', 'checkout', '-f', '-b', self.initial_branch)):
+                self.run_command(command)
+            #
+        else:
+            self.run_command(
+                ('git', 'checkout', '-f', self.initial_branch))
+        #
 
     def _optimize_repos(self):
         """Optimize the git repository"""
+        logging.info('--- Optimize Repository ---')
         self.run_long_task('git gc'.split())
 
     def _verify_working_tree_is_clean(self):
         """Check if there are no pending local changes"""
+        logging.info('--- Verify working tree is clean ---')
         tree_status = self.run_command(
             'git status --porcelain --untracked-files=no'.split())
         if tree_status.strip():
@@ -442,7 +529,6 @@ def __get_arguments():
         dest='tags_prefixes',
         metavar='TAGS_PATH',
         nargs='+',
-        default='tags',
         help='Subpath to tags from repository URL (default: %s);'
         ' can be used multiple times' % DEFAULT_TAGS)
     argument_parser.add_argument(
