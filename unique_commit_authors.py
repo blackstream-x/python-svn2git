@@ -22,7 +22,7 @@ import argparse
 import datetime
 import locale
 import logging
-import os.path
+import os
 import re
 import sys
 
@@ -205,11 +205,15 @@ class LogExaminer:
 
     def _get_repository_info(self, url=None):
         """Return the information read through 'svn info' as a dict"""
+        # Set the LANG=C environment variable
+        # to prevent svn info output translation
+        env = dict(os.environ)
+        env['LANG'] = 'C'
         command = [self.options.svn_command, 'info']
         if url:
             command.append(url)
         #
-        raw_result = processwrappers.get_command_result(command)
+        raw_result = processwrappers.get_command_result(command, env=env)
         if raw_result.stderr:
             logging.error(raw_result.stderr.decode(ENCODING))
         #
@@ -332,6 +336,7 @@ def __get_arguments():
         ' (e.g. /opt/CollabNet_Subversion/bin/svn).')
     argument_parser.add_argument(
         'svn_url',
+        metavar='SVN_URL',
         nargs='?',
         help='Subversion repository URL')
     arguments = argument_parser.parse_args()
