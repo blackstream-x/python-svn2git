@@ -136,18 +136,20 @@ class LogExaminer:
             logging.error(', '.join(ranges_list(missing_revisions)))
             if self.in_repository_root:
                 logging.error(
-                    'You probably need to execute an "%s update"!',
+                    'You probably need to execute "%s update".',
                     self.options.svn_command)
             else:
                 logging.error(
                     'Try to call this script again from the working copy'
                     ' root directory,')
                 logging.error(
-                    'or provide the %s URL on the command line.',
-                    self.repository_root)
-                logging.error(
-                    'You also could try an "%s update".',
+                    'but executing "%s update" won’t hurt either.',
                     self.options.svn_command)
+            #
+            logging.error(
+                'Anyway, it might be a better idea to provide the URL')
+            logging.error(self.repository_root)
+            logging.error('on the command line.')
             log_separator(level=logging.ERROR)
             return RETURNCODE_ERROR
         #
@@ -338,7 +340,8 @@ def __get_arguments():
         'svn_url',
         metavar='SVN_URL',
         nargs='?',
-        help='Subversion repository URL')
+        help='Subversion repository URL. If omitted, inspect the log'
+        ' of the working copy in the current directory instead.')
     arguments = argument_parser.parse_args()
     logging.basicConfig(format=FS_MESSAGE,
                         level=arguments.loglevel)
