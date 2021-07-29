@@ -82,7 +82,7 @@ The **unique_commit_authors.py** script examines the log of either
 a subversion repository’s working copy located in the current directory,
 or that of the subversion repository at the specified URL.
 
-This scripts requires a Subversion command line client (i.e. **svn**)
+This script requires a Subversion command line client (i.e. **svn**)
 to be installed.
 
 You can redirect standard output to a file
