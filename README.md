@@ -1,7 +1,7 @@
 # python-svn2git
 
 __python-svn2git__ is a translation of the great
-[svn2git](https://github.com/nirvdrum/svn2git) utility to Python3,
+[svn2git](https://github.com/nirvdrum/svn2git) utility to Python 3,
 plus the **unique_commit_authors.py** script for determining all
 commit auhors from the subversion repository.
 
@@ -17,7 +17,7 @@ commit auhors from the subversion repository.
 ## svn2git.py
 
 The **svn2git.py** script can be used as a drop-in replacement
-for the original **svn2git** command, just requiring Python insteand of Ruby.
+for the original **svn2git** command, just requiring Python instead of Ruby.
 
 For now, the original documentation exactly applies here too.
 
