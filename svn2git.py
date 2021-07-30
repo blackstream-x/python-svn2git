@@ -321,6 +321,7 @@ class Migration:
             logging.info('Using authors file: %s', self.options.authors_file)
             self.__do_git_config('svn.authorsfile', self.options.authors_file)
         #
+        logging.info('Doing the SVN fetch; this will take some time')
         self.__do_git_svn_fetch()
 
     def _fix_branches(self):
@@ -331,6 +332,7 @@ class Migration:
             if PRX_SVN_PREFIX.match(branch)}
         logging.debug('Found branches: %r', svn_branches)
         if self.options.rebase:
+            logging.info('Doing the SVN fetch; this will take some time')
             run_long_task(GIT, 'svn', 'fetch')
         #
         cannot_setup_tracking_information = False
