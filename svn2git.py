@@ -61,8 +61,21 @@ GIT = 'git'
 CI_USER_NAME = 'user.name'
 CI_USER_EMAIL = 'user.email'
 
+# Commit data keys and pretty-printing formats
+CD_COMMENT = 'commit comment'
+CD_DATE = 'commit date'
+CD_AUTHOR_NAME = 'commit author name'
+CD_AUTHOR_EMAIL = 'commit author email'
+
+COMMIT_DATA_FORMATS = {
+    CD_COMMENT: '%s',
+    CD_DATE: '%ci',
+    CD_AUTHOR_NAME: '%an',
+    CD_AUTHOR_EMAIL: '%ae'}
+
 # Environment variable names
 ENV_GIT_COMMITTER_DATE = 'GIT_COMMITTER_DATE'
+
 
 #
 # Helper Functions
@@ -82,23 +95,21 @@ def exit_with_error(msg, *args):
     sys.exit(RETURNCODE_ERROR)
 
 
-def run_command(*command,
-                exit_on_error=True,
-                print_output=False,
-                **kwargs):
+def get_command_output(*command, exit_on_error=True, **kwargs):
     """Run the specified command and return its output
     (i.e. stdout and stderr in one).
+    if "exit_on_error" is set True (the default),
+    this script will exit with an error mesage
+    if the command returncode is non-zero.
     """
-    if print_output:
-        stdout_loglevel = logging.INFO
-    else:
-        stdout_loglevel = logging.DEBUG
-    #
     kwargs.update(
         dict(check=exit_on_error,
              stdout=subprocess.PIPE,
              stderr=subprocess.STDOUT,
-             loglevel=stdout_loglevel))
+             loglevel=logging.DEBUG))
+    if kwargs.get('env', '') is not None:
+        kwargs['env'] = ENV
+    #
     try:
         command_result = processwrappers.get_command_result(
             command, **kwargs)
@@ -111,42 +122,37 @@ def run_command(*command,
     #
     output = command_result.stdout.decode(ENCODING)
     for line in output.splitlines():
-        logging.log(stdout_loglevel, line)
+        logging.debug(line)
     #
     return output
 
 
-def run_long_task(*command,
-                  exit_on_error=True,
-                  print_output=False,
-                  **kwargs):
-    """Run the specified long running task and return its output
-    (i.e. stdout and stderr in one).
+def run_long_task(*command, **kwargs):
+    """Run the specified long running task and return its returncode.
+    The output streams (stdout and stderr) are not captured,
+    allowing normal user interaction with the command
+    (eg. for password input).
+    If the  command returncode is non-zero,
+    this script will exit with an error message.
     """
-    if print_output:
-        stdout_loglevel = logging.INFO
-        stderr_loglevel = logging.WARNING
-    else:
-        stdout_loglevel = logging.DEBUG
-        stderr_loglevel = logging.INFO
-    #
     kwargs.update(
-        dict(check=exit_on_error,
-             stderr_loglevel=stderr_loglevel,
-             stdout_loglevel=stdout_loglevel,
-             loglevel=stdout_loglevel,
-             output_encoding=ENCODING,
-             all_to_stdout=True))
+        dict(check=True,
+             stderr=None,
+             stdout=None,
+             loglevel=logging.INFO))
+    if kwargs.get('env', '') is not None:
+        kwargs['env'] = ENV
+    #
     try:
-        command_result = processwrappers.long_running_process_result(
+        command_result = processwrappers.get_command_result(
             command, **kwargs)
     except subprocess.CalledProcessError as error:
         exit_with_error(
-            'Long task failed: %r\nReturncode: %s.',
+            'Long running task failed: %r\nReturncode: %s.',
             processwrappers.future_shlex_join(error.cmd),
             error.returncode)
     #
-    return command_result.stdout.decode(ENCODING)
+    return command_result.returncode
 
 
 def find_branches(remote=False):
@@ -158,7 +164,7 @@ def find_branches(remote=False):
     if remote:
         command.append('-r')
     #
-    for branch in run_command(*command, '--no-color').splitlines():
+    for branch in get_command_output(*command, '--no-color').splitlines():
         branch = branch.replace('*', '').strip()
         if branch:
             yield branch
@@ -173,15 +179,17 @@ def optimize_repos():
 
 
 def verify_working_tree_is_clean():
-    """Check if there are no pending local changes"""
+    """Check if there are no pending local changes.
+    Exit if there are any.
+    """
     logging.info('--- Verify working tree is clean ---')
-    tree_status = run_command(
+    tree_status_output = get_command_output(
         GIT, 'status', '--porcelain', '--untracked-files=no')
-    if tree_status.strip():
+    if tree_status_output.strip():
         exit_with_error(
             'You have local pending changes:\n%s\n'
             'The working tree must be clean in order to continue.',
-            tree_status)
+            tree_status_output)
     #
 
 
@@ -232,7 +240,7 @@ class Migration:
         if self.__local_config_enabled and '--global' not in args:
             command.append('--local')
         #
-        return run_command(*command, *args, **kwargs)
+        return get_command_output(*command, *args, **kwargs)
 
     def __do_git_svn_init(self):
         """Execute the 'git svn init' command"""
@@ -252,8 +260,7 @@ class Migration:
         #
         if self.options.rootistrunk:
             command.append(f'--trunk={self.options.svn_url}')
-            return run_long_task(
-                *command, env=ENV, exit_on_error=True, print_output=True)
+            return run_long_task(*command)
         #
         if self.options.trunk_prefix:
             command.append(f'--trunk={self.options.trunk_prefix}')
@@ -265,8 +272,7 @@ class Migration:
             command.append(f'--branches={branches_prefix}')
         #
         command.append(self.options.svn_url)
-        return run_long_task(
-            *command, env=ENV, exit_on_error=True, print_output=True)
+        return run_long_task(*command)
 
     def __do_git_svn_fetch(self):
         """Execute the 'git svn fetch' command"""
@@ -299,17 +305,16 @@ class Migration:
                 '|'.join(self.options.exclude))
             command.append(f'--ignore-paths={regex}')
         #
-        return run_long_task(
-            *command, env=ENV, exit_on_error=True, print_output=True)
+        return run_long_task(*command)
 
     def _clone(self):
         """Clone the Subversion repository"""
         logging.info('=== Clone ===')
         self.__do_git_svn_init()
         # Check if local config is possible
-        config_status = self.__do_git_config(
-            '--get', 'user.name', exit_on_error=False, env=ENV)
-        if 'unknown option' in config_status.lower():
+        config_output = self.__do_git_config(
+            '--get', 'user.name', exit_on_error=False)
+        if 'unknown option' in config_output.lower():
             self.__local_config_enabled = False
         #
         if os.path.isfile(self.options.authors_file):
@@ -326,7 +331,7 @@ class Migration:
             if PRX_SVN_PREFIX.match(branch)}
         logging.debug('Found branches: %r', svn_branches)
         if self.options.rebase:
-            run_long_task(GIT, 'svn', 'fetch', print_output=True)
+            run_long_task(GIT, 'svn', 'fetch')
         #
         cannot_setup_tracking_information = False
         legacy_svn_branch_tracking_message_displayed = False
@@ -340,22 +345,22 @@ class Migration:
                 else:
                     local_branch = branch
                 #
-                run_command(GIT, 'checkout', '-f', local_branch)
-                run_command(GIT, 'rebase', remote_svn_branch)
+                get_command_output(GIT, 'checkout', '-f', local_branch)
+                get_command_output(GIT, 'rebase', remote_svn_branch)
                 continue
             #
             if (branch in self.local_branches
                     or branch == DEFAULT_TRUNK):
                 continue
             #
-            untracked_checkout_command = (
+            untracked_checkout = (
                 GIT, 'checkout', '-b', branch, remote_svn_branch)
             if cannot_setup_tracking_information:
-                run_command(*untracked_checkout_command)
+                get_command_output(*untracked_checkout)
             else:
-                status = run_command(
+                track_output = get_command_output(
                     GIT, 'branch', '--track', branch, remote_svn_branch,
-                    exit_on_error=False, env=ENV)
+                    exit_on_error=False)
                 # As of git 1.8.3.2, tracking information cannot be
                 # set up for remote SVN branches:
                 # <http://git.661346.n2.nabble.com/
@@ -368,9 +373,9 @@ class Migration:
                 # So, we'll deprecate the old option,
                 # informing those relying on the old behavior
                 # that they should use the newer --rebase option.
-                if 'Cannot setup tracking information' in status:
+                if 'cannot setup tracking information' in track_output.lower():
                     cannot_setup_tracking_information = True
-                    run_command(*untracked_checkout_command)
+                    get_command_output(*untracked_checkout)
                 else:
                     if not legacy_svn_branch_tracking_message_displayed:
                         logging.warning('*' * 68)
@@ -385,7 +390,7 @@ class Migration:
                         logging.warning('*' * 68)
                         legacy_svn_branch_tracking_message_displayed = True
                     #
-                    run_command(GIT, 'checkout', branch)
+                    get_command_output(GIT, 'checkout', branch)
                 #
             #
         #
@@ -394,40 +399,34 @@ class Migration:
         """Convert the svn/tags/* branches to git tags"""
         logging.info('--- Fix Tags ---')
         saved_originals = {
-            key: self.__do_git_config(
-                '--get', key, exit_on_error=False).strip()
+            key: self.__do_git_config('--get', key,
+                                      exit_on_error=False).strip()
             for key in (CI_USER_NAME, CI_USER_EMAIL)}
-        pretty_format = dict(
-            subject='%s',
-            commit_date='%ci',
-            author_name='%an',
-            author_email='%ae')
         try:
             for tag_name in self.tags:
                 tag_name = tag_name.strip()
                 tag_id = PRX_SVNTAGS_PREFIX.sub('', tag_name)
                 commit_data = {
-                    key: run_command(
-                        GIT, 'log', '-1',
-                        f'--pretty=format:{value}', tag_name)
-                    for (key, value) in pretty_format.items()}
+                    key: get_command_output(GIT, 'log', '-1',
+                                            f'--pretty=format:{value}',
+                                            tag_name)
+                    for (key, value) in COMMIT_DATA_FORMATS.items()}
                 self.__do_git_config(
-                    CI_USER_NAME, commit_data['author_name'])
+                    CI_USER_NAME, commit_data[CD_AUTHOR_NAME])
                 self.__do_git_config(
-                    CI_USER_EMAIL, commit_data['author_email'])
+                    CI_USER_EMAIL, commit_data[CD_AUTHOR_EMAIL])
                 original_git_committer_date = ENV.get(ENV_GIT_COMMITTER_DATE)
-                ENV[ENV_GIT_COMMITTER_DATE] = commit_data['commit_date']
-                run_command(
+                ENV[ENV_GIT_COMMITTER_DATE] = commit_data[CD_DATE]
+                get_command_output(
                     GIT, 'tag', '-a',
-                    '-m', commit_data['subject'],
-                    tag_id, tag_name,
-                    env=ENV)
+                    '-m', commit_data[CD_COMMENT],
+                    tag_id, tag_name)
                 if original_git_committer_date is None:
                     del ENV[ENV_GIT_COMMITTER_DATE]
                 else:
                     ENV[ENV_GIT_COMMITTER_DATE] = original_git_committer_date
                 #
-                run_command(GIT, 'branch', '-d', '-r', tag_name)
+                get_command_output(GIT, 'branch', '-d', '-r', tag_name)
             #
         finally:
             # We only change the git config values
@@ -452,10 +451,10 @@ class Migration:
                     (GIT, 'checkout', 'svn/trunk'),
                     (GIT, 'branch', '-D', self.__initial_branch),
                     (GIT, 'checkout', '-f', '-b', self.__initial_branch)):
-                run_command(*command)
+                get_command_output(*command)
             #
         else:
-            run_command(GIT, 'checkout', '-f', self.__initial_branch)
+            get_command_output(GIT, 'checkout', '-f', self.__initial_branch)
         #
 
     def _get_branches(self):
