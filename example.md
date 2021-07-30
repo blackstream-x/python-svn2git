@@ -5,9 +5,11 @@ Small walkthrough to demonstrate the usage of the scripts in this repository
 ## 0. Set up the environment
 
 This is a special environment set up exclusively for this example,
-with the SVN repository ocated at the URL `file:///tmp/svn2git-demo/svn-repos/example`.
+with the SVN repository located at the URL `file:///tmp/svn2git-demo/svn-repos/example`.
 
-### Set up directories
+In a real use case, the Subversion repository would already exist.
+
+### 0.1 Set up directories
 
 ```
 user@machine [~] $ export LANG=C
@@ -21,7 +23,7 @@ drwxr-xr-x 2 rainer rainer 40 Jul 29 14:51 svn-repos
 user@machine [~] $
 ```
 
-### Create the subversion repository
+### 0.2 Create the subversion repository
 
 ... from a dump created earlier on the same day
 
@@ -100,7 +102,7 @@ user@machine [~] $ svnadmin load /tmp/svn2git-demo/svn-repos/example < example.d
 user@machine [~] $
 ```
 
-### View the log of the SVN repository
+### 0.3 View the log of the SVN repository
 
 ```
 user@machine [~] $ svn log -v -r 1:HEAD file:///tmp/svn2git-demo/svn-repos/example
@@ -191,6 +193,8 @@ user@machine [~] $
 ```
 
 ## 1. Determine SVN repository authors
+
+Per-user statistics are not required, I just wanted to show off here.
 
 ```
 user@machine [~] $ ~/python-svn2git/unique_commit_authors.py --per-user-statistics file:///tmp/svn2git-demo/svn-repos/example > example-authors.txt
@@ -364,7 +368,7 @@ To github.com:blackstream-x/svn2git-example.git
 user@machine [example] $
 ```
 
-## Results:
+## Results
 
 Local repository viewed in a Git GUI:
 

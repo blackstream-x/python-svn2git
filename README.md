@@ -1,6 +1,6 @@
 # python-svn2git
 
-__python-svn2git__ is a translation of the great
+_python-svn2git_ is a translation of the great
 [svn2git](https://github.com/nirvdrum/svn2git) utility to Python 3,
 plus the **unique_commit_authors.py** script for determining all
 commit auhors from the subversion repository.
