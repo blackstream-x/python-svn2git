@@ -266,72 +266,79 @@ user@machine [example] $ ~/python-svn2git/svn2git.py --authors ~/example-authors
 INFO    ║ === Clone ===
 INFO    ║ --- Do Git SVN Init ---
 INFO    ║ Executing command: git svn init --prefix=svn/ --no-metadata --trunk=trunk --tags=tags --branches=branches file:///tmp/svn2git-demo/svn-repos/example
-WARNING ║ hint: Using 'master' as the name for the initial branch. This default branch name
-WARNING ║ hint: is subject to change. To configure the initial branch name to use in all
-WARNING ║ hint: of your new repositories, which will suppress this warning, call:
-WARNING ║ hint:
-WARNING ║ hint: 	git config --global init.defaultBranch <name>
-WARNING ║ hint:
-WARNING ║ hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
-WARNING ║ hint: 'development'. The just-created branch can be renamed via this command:
-WARNING ║ hint:
-WARNING ║ hint: 	git branch -m <name>
-INFO    ║ Initialized empty Git repository in /tmp/svn2git-demo/git-repos/example/.git/
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: is subject to change. To configure the initial branch name to use in all
+hint: of your new repositories, which will suppress this warning, call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+Initialized empty Git repository in /tmp/svn2git-demo/git-repos/example/.git/
 INFO    ║ Using authors file: /home/rainer/example-authors.txt
 INFO    ║ --- Do Git SVN Fetch ---
 INFO    ║ Executing command: git svn fetch
-INFO    ║ r1 = 2866c7ef01d7a390979cb1ac858a0fc70017e50a (refs/remotes/svn/trunk)
-INFO    ║ 	A	README.md
-INFO    ║ r2 = e431ee34b532e854bd429e83fa89d2a555e60bf8 (refs/remotes/svn/trunk)
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/trunk => file:///tmp/svn2git-demo/svn-repos/example/branches/1.0, 1
-WARNING ║ Found branch parent: (refs/remotes/svn/1.0) 2866c7ef01d7a390979cb1ac858a0fc70017e50a
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-INFO    ║ 	A	README.md
-INFO    ║ r3 = 2c1aede4e0dbf7bac958fe57fc461a3641ff9068 (refs/remotes/svn/1.0)
-INFO    ║ 	M	README.md
-INFO    ║ 	A	changes.md
-INFO    ║ r4 = 28de707646e0b03fb2ea789ca7f8511aae8578a2 (refs/remotes/svn/1.0)
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.0.0, 4
-WARNING ║ Found branch parent: (refs/remotes/svn/tags/release-1.0.0) 28de707646e0b03fb2ea789ca7f8511aae8578a2
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-INFO    ║ r5 = 180df03d009303a6e39d6cf8394ed9044c598879 (refs/remotes/svn/tags/release-1.0.0)
-INFO    ║ 	M	changes.md
-INFO    ║ r6 = 4c47857135c490b20a213af4df8b585090e65a21 (refs/remotes/svn/1.0)
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.0.1, 6
-WARNING ║ Found branch parent: (refs/remotes/svn/tags/release-1.0.1) 4c47857135c490b20a213af4df8b585090e65a21
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/branches/1.1, 7
-INFO    ║ r7 = f53d3dabc82d0778a8278fbb3bfdea6cc7e3203f (refs/remotes/svn/tags/release-1.0.1)
-WARNING ║ Found branch parent: (refs/remotes/svn/1.1) 4c47857135c490b20a213af4df8b585090e65a21
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-INFO    ║ r8 = 17fb0edaa4b9ffcf5e3ffe060bb118e06c2bc4c4 (refs/remotes/svn/1.1)
-INFO    ║ 	A	new-file.md
-INFO    ║ r9 = a957b5ffbfa33dd1e776aedac0776b458a4b9c46 (refs/remotes/svn/1.0)
-INFO    ║ 	M	changes.md
-INFO    ║ r10 = cf8a93116913278ccbae6058975e8cd5c22fb3db (refs/remotes/svn/1.1)
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.1 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.1.0, 10
-WARNING ║ Found branch parent: (refs/remotes/svn/tags/release-1.1.0) cf8a93116913278ccbae6058975e8cd5c22fb3db
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-INFO    ║ r11 = c6b8310f04572536e8c2842a8ef1dd5d69368163 (refs/remotes/svn/tags/release-1.1.0)
-INFO    ║ 	A	changes.md
-INFO    ║ r12 = 8b6bb5b91393bcc51e91d96f4143a2e70e1cb130 (refs/remotes/svn/trunk)
-WARNING ║ Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/trunk => file:///tmp/svn2git-demo/svn-repos/example/tags/release-2.0, 12
-WARNING ║ Found branch parent: (refs/remotes/svn/tags/release-2.0) 8b6bb5b91393bcc51e91d96f4143a2e70e1cb130
-WARNING ║ Following parent with do_switch
-WARNING ║ Successfully followed parent
-INFO    ║ r13 = bfc61e034930cb714f05980be5b4de702c9577d3 (refs/remotes/svn/tags/release-2.0)
-WARNING ║ Checked out HEAD:
-WARNING ║   file:///tmp/svn2git-demo/svn-repos/example/trunk r12
+r1 = 2866c7ef01d7a390979cb1ac858a0fc70017e50a (refs/remotes/svn/trunk)
+	A	README.md
+r2 = e431ee34b532e854bd429e83fa89d2a555e60bf8 (refs/remotes/svn/trunk)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/trunk => file:///tmp/svn2git-demo/svn-repos/example/branches/1.0, 1
+Found branch parent: (refs/remotes/svn/1.0) 2866c7ef01d7a390979cb1ac858a0fc70017e50a
+Following parent with do_switch
+	A	README.md
+Successfully followed parent
+r3 = 2c1aede4e0dbf7bac958fe57fc461a3641ff9068 (refs/remotes/svn/1.0)
+	M	README.md
+	A	changes.md
+r4 = 28de707646e0b03fb2ea789ca7f8511aae8578a2 (refs/remotes/svn/1.0)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.0.0, 4
+Found branch parent: (refs/remotes/svn/tags/release-1.0.0) 28de707646e0b03fb2ea789ca7f8511aae8578a2
+Following parent with do_switch
+Successfully followed parent
+r5 = 180df03d009303a6e39d6cf8394ed9044c598879 (refs/remotes/svn/tags/release-1.0.0)
+	M	changes.md
+r6 = 4c47857135c490b20a213af4df8b585090e65a21 (refs/remotes/svn/1.0)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.0.1, 6
+Found branch parent: (refs/remotes/svn/tags/release-1.0.1) 4c47857135c490b20a213af4df8b585090e65a21
+Following parent with do_switch
+Successfully followed parent
+r7 = f53d3dabc82d0778a8278fbb3bfdea6cc7e3203f (refs/remotes/svn/tags/release-1.0.1)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.0 => file:///tmp/svn2git-demo/svn-repos/example/branches/1.1, 7
+Found branch parent: (refs/remotes/svn/1.1) 4c47857135c490b20a213af4df8b585090e65a21
+Following parent with do_switch
+Successfully followed parent
+r8 = 17fb0edaa4b9ffcf5e3ffe060bb118e06c2bc4c4 (refs/remotes/svn/1.1)
+	A	new-file.md
+r9 = a957b5ffbfa33dd1e776aedac0776b458a4b9c46 (refs/remotes/svn/1.0)
+	M	changes.md
+r10 = cf8a93116913278ccbae6058975e8cd5c22fb3db (refs/remotes/svn/1.1)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/branches/1.1 => file:///tmp/svn2git-demo/svn-repos/example/tags/release-1.1.0, 10
+Found branch parent: (refs/remotes/svn/tags/release-1.1.0) cf8a93116913278ccbae6058975e8cd5c22fb3db
+Following parent with do_switch
+Successfully followed parent
+r11 = c6b8310f04572536e8c2842a8ef1dd5d69368163 (refs/remotes/svn/tags/release-1.1.0)
+	A	changes.md
+r12 = 8b6bb5b91393bcc51e91d96f4143a2e70e1cb130 (refs/remotes/svn/trunk)
+Found possible branch point: file:///tmp/svn2git-demo/svn-repos/example/trunk => file:///tmp/svn2git-demo/svn-repos/example/tags/release-2.0, 12
+Found branch parent: (refs/remotes/svn/tags/release-2.0) 8b6bb5b91393bcc51e91d96f4143a2e70e1cb130
+Following parent with do_switch
+Successfully followed parent
+r13 = bfc61e034930cb714f05980be5b4de702c9577d3 (refs/remotes/svn/tags/release-2.0)
+Checked out HEAD:
+  file:///tmp/svn2git-demo/svn-repos/example/trunk r12
 INFO    ║ --- Get Branches ---
 INFO    ║ --- Fix Branches ---
 INFO    ║ --- Fix Tags ---
 INFO    ║ --- Fix Trunk ---
 INFO    ║ --- Optimize Repository ---
+INFO    ║ Executing command: git gc
+Enumerating objects: 31, done.
+Counting objects: 100% (31/31), done.
+Delta compression using up to 4 threads
+Compressing objects: 100% (24/24), done.
+Writing objects: 100% (31/31), done.
+Total 31 (delta 1), reused 0 (delta 0), pack-reused 0
 user@machine [example] $
 ```
 
