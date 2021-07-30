@@ -16,7 +16,6 @@ License: MIT, see LICENSE file
 
 
 import argparse
-import locale
 import logging
 import os
 import re
@@ -47,9 +46,6 @@ PRX_SVN_PREFIX = re.compile(r'^svn/')
 
 RETURNCODE_OK = 0
 RETURNCODE_ERROR = 1
-
-locale.setlocale(locale.LC_ALL, '')
-ENCODING = locale.getpreferredencoding()
 
 ENV = dict(os.environ)
 ENV['LANG'] = 'C'       # Prevent command output translation
@@ -118,9 +114,9 @@ def get_command_output(*command, exit_on_error=True, **kwargs):
             'Command failed: %r\nReturncode: %s\nOutput:\n%s',
             processwrappers.future_shlex_join(error.cmd),
             error.returncode,
-            error.stdout.decode(ENCODING))
+            error.stdout.decode())
     #
-    output = command_result.stdout.decode(ENCODING)
+    output = command_result.stdout.decode()
     for line in output.splitlines():
         logging.debug(line)
     #
