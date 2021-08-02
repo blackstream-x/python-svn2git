@@ -16,6 +16,7 @@ License: MIT, see LICENSE file
 
 
 import argparse
+import datetime
 import logging
 import os
 import re
@@ -72,6 +73,14 @@ COMMIT_DATA_FORMATS = {
 # Environment variable names
 ENV_GIT_COMMITTER_DATE = 'GIT_COMMITTER_DATE'
 
+SCRIPT_NAME = os.path.basename(__file__)
+
+# Read the (script) version from version.txt
+with open(os.path.join(os.path.dirname(sys.argv[0]), 'version.txt'),
+          mode='rt') as version_file:
+    VERSION = version_file.read().strip()
+#
+
 
 #
 # Helper Functions
@@ -88,6 +97,12 @@ def exit_with_error(msg, *args):
     for line in msg.splitlines():
         logging.error(line)
     #
+    abort_time = datetime.datetime.now()
+    logging.info(
+        '%s %s aborted at %s',
+        SCRIPT_NAME,
+        VERSION,
+        abort_time)
     sys.exit(RETURNCODE_ERROR)
 
 
@@ -209,6 +224,12 @@ class Migration:
 
     def run(self):
         """Execute the migration depending on the arguments"""
+        start_time = datetime.datetime.now()
+        logging.info(
+            '%s %s started at %s',
+            SCRIPT_NAME,
+            VERSION,
+            start_time)
         if self.options.svn_url:
             self._clone()
             self._get_branches()
@@ -226,6 +247,14 @@ class Migration:
         self._fix_tags()
         self._fix_trunk()
         optimize_repos()
+        finish_time = datetime.datetime.now()
+        logging.info(
+            '%s %s finished at %s',
+            SCRIPT_NAME,
+            VERSION,
+            finish_time)
+        duration = (finish_time - start_time).total_seconds()
+        logging.info('Elapsed time: %d seconds', duration)
         return RETURNCODE_OK
 
     def __do_git_config(self, *args, **kwargs):

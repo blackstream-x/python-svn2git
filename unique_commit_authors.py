@@ -49,6 +49,12 @@ RETURNCODE_ERROR = 1
 
 SCRIPT_NAME = os.path.basename(__file__)
 
+# Read the (script) version from version.txt
+with open(os.path.join(os.path.dirname(sys.argv[0]), 'version.txt'),
+          mode='rt') as version_file:
+    VERSION = version_file.read().strip()
+#
+
 locale.setlocale(locale.LC_ALL, '')
 ENCODING = locale.getpreferredencoding()
 
@@ -271,7 +277,11 @@ class LogExaminer:
         and print statistics
         """
         start_time = datetime.datetime.now()
-        logging.info('%s start at %s', SCRIPT_NAME, start_time)
+        logging.info(
+            '%s %s started at %s',
+            SCRIPT_NAME,
+            VERSION,
+            start_time)
         logging.info('Repository Root: %s', self.repository_root)
         logging.info('HEAD Revision:   %s', self.head_revision)
         log_separator()
@@ -292,7 +302,11 @@ class LogExaminer:
             self._check_for_missing_revisions(),
             highest_returncode)
         finish_time = datetime.datetime.now()
-        logging.info('%s finish at %s', SCRIPT_NAME, finish_time)
+        logging.info(
+            '%s %s finished at %s',
+            SCRIPT_NAME,
+            VERSION,
+            finish_time)
         return highest_returncode
 
 
