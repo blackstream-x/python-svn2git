@@ -132,7 +132,7 @@ def get_command_output(*command, exit_on_error=True, **kwargs):
             command, **kwargs)
     except subprocess.CalledProcessError as error:
         exit_with_error(
-            'Command failed: %r\n'
+            '[Command failed] %s\n'
             'Returncode: %s\n'
             '___ Standard error ___\n%s',
             '___ Standard output ___\n%s',
@@ -174,7 +174,8 @@ def run_long_task(*command, **kwargs):
             command, **kwargs)
     except subprocess.CalledProcessError as error:
         exit_with_error(
-            'Long running task failed: %r\nReturncode: %s.',
+            '[Long running task failed] %s\n'
+            'Returncode: %s\n',
             processwrappers.future_shlex_join(error.cmd),
             error.returncode)
     #
