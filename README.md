@@ -24,9 +24,9 @@ For now, the original documentation exactly applies here too.
 The usage message produced by `svn2git.py --help` is:
 
 ```
-usage: svn2git.py [-h] [-v] [--username NAME] [--password PASSWORD]
-                  [--authors AUTHORS_FILE] [--exclude REGEX [REGEX ...]] [-m]
-                  [--no-minimize-url] [--revision START_REV[:END_REV]]
+usage: svn2git.py [-h] [-v] [--username NAME] [--authors AUTHORS_FILE]
+                  [--exclude REGEX [REGEX ...]] [-m] [--no-minimize-url]
+                  [--revision START_REV[:END_REV]]
                   [--branches BRANCHES_PATH [BRANCHES_PATH ...] |
                   --nobranches] [--tags TAGS_PATH [TAGS_PATH ...] | --notags]
                   [--trunk TRUNK_PATH | --notrunk] [--rootistrunk] [--rebase]
@@ -42,7 +42,6 @@ optional arguments:
   -h, --help            show this help message and exit
   -v, --verbose         Output all messages including debug level
   --username NAME       Username for transports that need it (http(s), svn)
-  --password PASSWORD   Password for transports that need it (http(s), svn)
   --authors AUTHORS_FILE
                         Path to file containing svn-to-git authors mapping
                         (default: ~/.svn2git/authors)
@@ -73,7 +72,6 @@ optional arguments:
                         one against SVN
   --rebasebranch REBASEBRANCH
                         Rebase the specified branch
-
 ```
 
 ## unique_commit_authors.py

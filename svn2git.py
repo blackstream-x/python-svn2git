@@ -329,9 +329,6 @@ class Migration:
         if self.options.username:
             command.append(f'--username={self.options.username}')
         #
-        if self.options.password:
-            command.append(f'--password={self.options.password}')
-        #
         if not self.options.metadata:
             command.append('--no-metadata')
         #
@@ -626,9 +623,6 @@ def __get_arguments():
         '--username',
         metavar='NAME',
         help='Username for transports that need it (http(s), svn)')
-    argument_parser.add_argument(
-        '--password',
-        help='Password for transports that need it (http(s), svn)')
     argument_parser.add_argument(
         '--authors',
         dest='authors_file',
