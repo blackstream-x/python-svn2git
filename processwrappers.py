@@ -44,10 +44,10 @@ if sys.platform == 'win32':
 #
 
 
-class AsynchronousStreamReader(threading.Thread):
-    """Helper class to implement asynchronous reading of a stream
-    in a separate thread. Pushes read lines on a queue to
-    be consumed in another thread.
+class AsynchronousLineReader(threading.Thread):
+    """Helper class to implement asynchronous
+    line-per-line reading of a stream in a separate thread.
+    Pushes read lines on a queue to be consumed in another thread.
 
     Adapted from <https://github.com/soxofaan/asynchronousfilereader>
     """
@@ -90,8 +90,13 @@ class AsynchronousStreamReader(threading.Thread):
 
 def future_shlex_join(sequence):
     """Simple replacement for the shlex.join() function
-    that was introduced in Python 3.8
+    (introduced in Python 3.8) if it is not available yet.
     """
+    try:
+        return shlex.join(sequence)
+    except AttributeError:
+        pass
+    #
     output_sequence = []
     for item in sequence:
         if re.search(r'\s', item):
@@ -126,7 +131,7 @@ def __prepare_command(command, **kwargs):
     if loglevel:
         logging.log(
             loglevel,
-            'Executing command: %s',
+            '[Executing command] %s',
             future_shlex_join(converted_command))
     #
     return converted_command, kwargs
@@ -162,7 +167,7 @@ def get_streams_and_process(command, **kwargs):
     streams_to_read = []
     for stream_name in available_streams:
         current_stream = kwargs.pop(stream_name, None)
-        if current_stream == AsynchronousStreamReader:
+        if current_stream == AsynchronousLineReader:
             streams_to_read.append(stream_name)
             kwargs[stream_name] = subprocess.PIPE
         else:
@@ -172,7 +177,7 @@ def get_streams_and_process(command, **kwargs):
     started_process = subprocess.Popen(converted_command, **kwargs)
     process_info = dict(process=started_process)
     for stream_name in streams_to_read:
-        process_info[stream_name] = AsynchronousStreamReader(
+        process_info[stream_name] = AsynchronousLineReader(
             getattr(started_process, stream_name))
     #
     return process_info
@@ -192,11 +197,15 @@ def long_running_process_result(command,
     if check is True (the default) and the returncode is non-zero.
     If all_to_stdout ist set True, redirect stderr to stdout.
 
+    This function is not suitable for processes asking for user input
+    because propts not ending in a line break will not be presented
+    at the corrct time, and user input will not be echoed.
+
     Also adapted from
     <https://github.com/soxofaan/asynchronousfilereader>
     """
-    kwargs['stderr'] = AsynchronousStreamReader
-    kwargs['stdout'] = AsynchronousStreamReader
+    kwargs['stderr'] = AsynchronousLineReader
+    kwargs['stdout'] = AsynchronousLineReader
     if sys.platform != 'win32':
         kwargs['close_fds'] = True
     #

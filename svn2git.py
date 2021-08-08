@@ -8,7 +8,9 @@ svn2git.py
 Adapted from <https://github.com/nirvdrum/svn2git>
 (Ruby tool for importing existing svn projects into git)
 
-Python port (c) 2021 by Rainer Schwarzbach
+Upstream ruby tool: (c) 2008 James Coglan, Kevin Menard
+
+This python port: (c) 2021 Rainer Schwarzbach
 
 License: MIT, see LICENSE file
 
@@ -70,6 +72,10 @@ COMMIT_DATA_FORMATS = {
     CD_AUTHOR_NAME: '%an',
     CD_AUTHOR_EMAIL: '%ae'}
 
+# 'git config' scopes
+CONFIG_GLOBAL = '--global'
+CONFIG_LOCAL = '--local'
+
 # Environment variable names
 ENV_GIT_COMMITTER_DATE = 'GIT_COMMITTER_DATE'
 
@@ -108,7 +114,7 @@ def exit_with_error(msg, *args):
 
 def get_command_output(*command, exit_on_error=True, **kwargs):
     """Run the specified command and return its output
-    (i.e. stdout and stderr in one).
+    (stdout and stderr combined).
     if "exit_on_error" is set True (the default),
     this script will exit with an error mesage
     if the command returncode is non-zero.
@@ -116,7 +122,7 @@ def get_command_output(*command, exit_on_error=True, **kwargs):
     kwargs.update(
         dict(check=exit_on_error,
              stdout=subprocess.PIPE,
-             stderr=subprocess.STDOUT,
+             stderr=subprocess.PIPE,
              loglevel=logging.DEBUG))
     if kwargs.get('env', '') is not None:
         kwargs['env'] = ENV
@@ -126,16 +132,25 @@ def get_command_output(*command, exit_on_error=True, **kwargs):
             command, **kwargs)
     except subprocess.CalledProcessError as error:
         exit_with_error(
-            'Command failed: %r\nReturncode: %s\nOutput:\n%s',
+            '[Command failed] %s\n'
+            'Returncode: %s\n'
+            '___ Standard error ___\n%s',
+            '___ Standard output ___\n%s',
             processwrappers.future_shlex_join(error.cmd),
             error.returncode,
+            error.stderr.decode(),
             error.stdout.decode())
     #
-    output = command_result.stdout.decode()
-    for line in output.splitlines():
-        logging.debug(line)
+    output_lines = []
+    for stderr_line in command_result.stderr.decode().splitlines():
+        logging.debug('[Command stderr] %s', stderr_line)
+        output_lines.append(stderr_line)
     #
-    return output
+    for stdout_line in command_result.stdout.decode().splitlines():
+        logging.debug('[Command stdout] %s', stdout_line)
+        output_lines.append(stdout_line)
+    #
+    return '\n'.join(output_lines)
 
 
 def run_long_task(*command, **kwargs):
@@ -159,7 +174,8 @@ def run_long_task(*command, **kwargs):
             command, **kwargs)
     except subprocess.CalledProcessError as error:
         exit_with_error(
-            'Long running task failed: %r\nReturncode: %s.',
+            '[Long running task failed] %s\n'
+            'Returncode: %s\n',
             processwrappers.future_shlex_join(error.cmd),
             error.returncode)
     #
@@ -209,6 +225,56 @@ def verify_working_tree_is_clean():
 #
 
 
+class GitConfigurator:
+
+    """Wrapper for a subset of possible git config calls:
+    git config [ --global | --local ] <key> <value>
+    git --get [ --global | --local ] <key>
+    git --unset [ --global | --local ] <key>
+
+    The --global or --local option is passed via scope
+    and always defaults to --local.
+    """
+
+    long_option_prefix = '--'
+
+    def __init__(self, local_config_enabled=True):
+        """Set the internal __local_config_enabled attribute"""
+        self.__local_config_enabled = local_config_enabled
+
+    def __check_key(self, key):
+        """Prevent programming errors:
+        raise a ValueError if key starts with '--'
+        """
+        if key.startswith(self.long_option_prefix):
+            raise ValueError('Invalid key for git config: %r!' % key)
+        #
+
+    def __execute(self, *args, scope=CONFIG_LOCAL, **kwargs):
+        """Execute the 'git config' command"""
+        command = [GIT, 'config']
+        if scope == CONFIG_GLOBAL or (
+                scope == CONFIG_LOCAL and self.__local_config_enabled):
+            command.append(scope)
+        #
+        return get_command_output(*command, *args, **kwargs)
+
+    def __call__(self, key, value, scope=CONFIG_LOCAL, **kwargs):
+        """git config <scope> <key> <value>"""
+        self.__check_key(key)
+        return self.__execute(key, value, scope=scope, **kwargs)
+
+    def get(self, key, scope=CONFIG_LOCAL, **kwargs):
+        """git config <scope> --get <key>"""
+        self.__check_key(key)
+        return self.__execute('--get', key, scope=scope, **kwargs)
+
+    def unset(self, key, scope=CONFIG_LOCAL, **kwargs):
+        """git config <scope> --unset <key>"""
+        self.__check_key(key)
+        return self.__execute('--unset', key, scope=scope, **kwargs)
+
+
 class Migration:
 
     """Subversion -> Git migration god object"""
@@ -220,7 +286,7 @@ class Migration:
         self.local_branches = set()
         self.remote_branches = set()
         self.tags = set()
-        self.__local_config_enabled = True
+        self.git_config = GitConfigurator()
 
     def run(self):
         """Execute the migration depending on the arguments"""
@@ -256,16 +322,6 @@ class Migration:
         duration = (finish_time - start_time).total_seconds()
         logging.info('Elapsed time: %d seconds', duration)
         return RETURNCODE_OK
-
-    def __do_git_config(self, *args, **kwargs):
-        """Execute the git config command with
-        the provided arguments
-        """
-        command = [GIT, 'config']
-        if self.__local_config_enabled and '--global' not in args:
-            command.append('--local')
-        #
-        return get_command_output(*command, *args, **kwargs)
 
     def __do_git_svn_init(self):
         """Execute the 'git svn init' command"""
@@ -337,16 +393,22 @@ class Migration:
         logging.info('=== Clone ===')
         self.__do_git_svn_init()
         # Check if local config is possible
-        config_output = self.__do_git_config(
-            '--get', 'user.name', exit_on_error=False)
+        logging.debug(
+            'Testing if the --local option is supported by git config …')
+        config_output = self.git_config.get(CI_USER_NAME, exit_on_error=False)
         if 'unknown option' in config_output.lower():
-            self.__local_config_enabled = False
+            self.git_config = GitConfigurator(local_config_enabled=False)
+            logging.debug(
+                '[no] --local option is not supported,'
+                ' omitting it in future config commands.')
+        else:
+            logging.debug(
+                '[yes] --local option is supported.')
         #
         if os.path.isfile(self.options.authors_file):
             logging.info('Using authors file: %s', self.options.authors_file)
-            self.__do_git_config('svn.authorsfile', self.options.authors_file)
+            self.git_config('svn.authorsfile', self.options.authors_file)
         #
-        logging.info('Doing the SVN fetch; this will take some time')
         self.__do_git_svn_fetch()
 
     def _fix_branches(self):
@@ -357,7 +419,7 @@ class Migration:
             if PRX_SVN_PREFIX.match(branch)}
         logging.debug('Found branches: %r', svn_branches)
         if self.options.rebase:
-            logging.info('Doing the SVN fetch; this will take some time')
+            logging.info('Doing the SVN fetch; this will take some time …')
             run_long_task(GIT, 'svn', 'fetch')
         #
         cannot_setup_tracking_information = False
@@ -402,6 +464,9 @@ class Migration:
                 # that they should use the newer --rebase option.
                 if 'cannot setup tracking information' in track_output.lower():
                     cannot_setup_tracking_information = True
+                    logging.debug('The above "fatal" message can be ignored.')
+                    logging.debug(
+                        'It just means your Git version is 1.8.3.2 or newer.')
                     get_command_output(*untracked_checkout)
                 else:
                     if not legacy_svn_branch_tracking_message_displayed:
@@ -411,8 +476,8 @@ class Migration:
                                 'Tracking remote SVN branches is deprecated.',
                                 'In a future release local branches'
                                 ' will be created without tracking.',
-                                'If you must resync your branches,'
-                                ' run: svn2git --rebase'):
+                                'If you have to resync your branches, run:',
+                                '  svn2git.py --rebase'):
                             logging.warning(line)
                         logging.warning('*' * 68)
                         legacy_svn_branch_tracking_message_displayed = True
@@ -426,22 +491,24 @@ class Migration:
         """Convert the svn/tags/* branches to git tags"""
         logging.info('--- Fix Tags ---')
         saved_originals = {
-            key: self.__do_git_config('--get', key,
-                                      exit_on_error=False).strip()
+            key: self.git_config.get(key, exit_on_error=False).strip()
             for key in (CI_USER_NAME, CI_USER_EMAIL)}
         try:
-            for tag_name in self.tags:
+            for tag_name in sorted(self.tags):
+                # Get commit data from the (latest) commit of a
+                # svn/tags/… branch (following the convention for svn,
+                # there should only be one),
+                # produce a git tag using these data
+                # and delete the now-obsolete branch.
                 tag_name = tag_name.strip()
                 tag_id = PRX_SVNTAGS_PREFIX.sub('', tag_name)
                 commit_data = {
-                    key: get_command_output(GIT, 'log', '-1',
-                                            f'--pretty=format:{value}',
-                                            tag_name)
+                    key: get_command_output(
+                        GIT, 'log', '-1',
+                        f'--pretty=format:{value}', tag_name)
                     for (key, value) in COMMIT_DATA_FORMATS.items()}
-                self.__do_git_config(
-                    CI_USER_NAME, commit_data[CD_AUTHOR_NAME])
-                self.__do_git_config(
-                    CI_USER_EMAIL, commit_data[CD_AUTHOR_EMAIL])
+                self.git_config(CI_USER_NAME, commit_data[CD_AUTHOR_NAME])
+                self.git_config(CI_USER_EMAIL, commit_data[CD_AUTHOR_EMAIL])
                 original_git_committer_date = ENV.get(ENV_GIT_COMMITTER_DATE)
                 ENV[ENV_GIT_COMMITTER_DATE] = commit_data[CD_DATE]
                 get_command_output(
@@ -462,9 +529,9 @@ class Migration:
             if self.tags:
                 for (key, value) in saved_originals.items():
                     if value:
-                        self.__do_git_config(key, value)
+                        self.git_config(key, value)
                     else:
-                        self.__do_git_config('--unset', key)
+                        self.git_config.unset(key)
                     #
                 #
             #
