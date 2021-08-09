@@ -22,12 +22,11 @@ import datetime
 import logging
 import os
 import re
-import subprocess
 import sys
 
 # local module
 
-import processwrappers
+import gitwrapper
 
 
 #
@@ -89,190 +88,8 @@ with open(os.path.join(os.path.dirname(sys.argv[0]), 'version.txt'),
 
 
 #
-# Helper Functions
-#
-
-
-def exit_with_error(msg, *args):
-    """Exit after logging the given error message
-    (which may stretch over multiple lines).
-    """
-    if args:
-        msg = msg % args
-    #
-    for line in msg.splitlines():
-        logging.error(line)
-    #
-    abort_time = datetime.datetime.now()
-    logging.info(
-        '%s %s aborted at %s',
-        SCRIPT_NAME,
-        VERSION,
-        abort_time)
-    sys.exit(RETURNCODE_ERROR)
-
-
-def get_command_output(*command, exit_on_error=True, **kwargs):
-    """Run the specified command and return its output
-    (stdout and stderr combined).
-    if "exit_on_error" is set True (the default),
-    this script will exit with an error mesage
-    if the command returncode is non-zero.
-    """
-    kwargs.update(
-        dict(check=exit_on_error,
-             stdout=subprocess.PIPE,
-             stderr=subprocess.PIPE,
-             loglevel=logging.DEBUG))
-    if kwargs.get('env', '') is not None:
-        kwargs['env'] = ENV
-    #
-    try:
-        command_result = processwrappers.get_command_result(
-            command, **kwargs)
-    except subprocess.CalledProcessError as error:
-        exit_with_error(
-            '[Command failed] %s\n'
-            'Returncode: %s\n'
-            '___ Standard error ___\n%s',
-            '___ Standard output ___\n%s',
-            processwrappers.future_shlex_join(error.cmd),
-            error.returncode,
-            error.stderr.decode(),
-            error.stdout.decode())
-    #
-    output_lines = []
-    for stderr_line in command_result.stderr.decode().splitlines():
-        logging.debug('[Command stderr] %s', stderr_line)
-        output_lines.append(stderr_line)
-    #
-    for stdout_line in command_result.stdout.decode().splitlines():
-        logging.debug('[Command stdout] %s', stdout_line)
-        output_lines.append(stdout_line)
-    #
-    return '\n'.join(output_lines)
-
-
-def run_long_task(*command, **kwargs):
-    """Run the specified long running task and return its returncode.
-    The output streams (stdout and stderr) are not captured,
-    allowing normal user interaction with the command
-    (eg. for password input).
-    If the  command returncode is non-zero,
-    this script will exit with an error message.
-    """
-    kwargs.update(
-        dict(check=True,
-             stderr=None,
-             stdout=None,
-             loglevel=logging.INFO))
-    if kwargs.get('env', '') is not None:
-        kwargs['env'] = ENV
-    #
-    try:
-        command_result = processwrappers.get_command_result(
-            command, **kwargs)
-    except subprocess.CalledProcessError as error:
-        exit_with_error(
-            '[Long running task failed] %s\n'
-            'Returncode: %s\n',
-            processwrappers.future_shlex_join(error.cmd),
-            error.returncode)
-    #
-    return command_result.returncode
-
-
-def find_branches(remote=False):
-    """Yield local or remote branches,
-    taking care to ignore console color codes and ignoring the
-    '*' character used to indicate the currently selected branch.
-    """
-    command = [GIT, 'branch']
-    if remote:
-        command.append('-r')
-    #
-    for branch in get_command_output(*command, '--no-color').splitlines():
-        branch = branch.replace('*', '').strip()
-        if branch:
-            yield branch
-        #
-    #
-
-
-def optimize_repos():
-    """Optimize the git repository"""
-    logging.info('--- Optimize Repository ---')
-    run_long_task(GIT, 'gc')
-
-
-def verify_working_tree_is_clean():
-    """Check if there are no pending local changes.
-    Exit if there are any.
-    """
-    logging.info('--- Verify working tree is clean ---')
-    tree_status_output = get_command_output(
-        GIT, 'status', '--porcelain', '--untracked-files=no')
-    if tree_status_output.strip():
-        exit_with_error(
-            'You have local pending changes:\n%s\n'
-            'The working tree must be clean in order to continue.',
-            tree_status_output)
-    #
-
-
-#
 # Classes
 #
-
-
-class GitConfigurator:
-
-    """Wrapper for a subset of possible git config calls:
-    git config [ --global | --local ] <key> <value>
-    git --get [ --global | --local ] <key>
-    git --unset [ --global | --local ] <key>
-
-    The --global or --local option is passed via scope
-    and always defaults to --local.
-    """
-
-    long_option_prefix = '--'
-
-    def __init__(self, local_config_enabled=True):
-        """Set the internal __local_config_enabled attribute"""
-        self.__local_config_enabled = local_config_enabled
-
-    def __check_key(self, key):
-        """Prevent programming errors:
-        raise a ValueError if key starts with '--'
-        """
-        if key.startswith(self.long_option_prefix):
-            raise ValueError('Invalid key for git config: %r!' % key)
-        #
-
-    def __execute(self, *args, scope=CONFIG_LOCAL, **kwargs):
-        """Execute the 'git config' command"""
-        command = [GIT, 'config']
-        if scope == CONFIG_GLOBAL or (
-                scope == CONFIG_LOCAL and self.__local_config_enabled):
-            command.append(scope)
-        #
-        return get_command_output(*command, *args, **kwargs)
-
-    def __call__(self, key, value, scope=CONFIG_LOCAL, **kwargs):
-        """git config <scope> <key> <value>"""
-        self.__check_key(key)
-        return self.__execute(key, value, scope=scope, **kwargs)
-
-    def get(self, key, scope=CONFIG_LOCAL, **kwargs):
-        """git config <scope> --get <key>"""
-        self.__check_key(key)
-        return self.__execute('--get', key, scope=scope, **kwargs)
-
-    def unset(self, key, scope=CONFIG_LOCAL, **kwargs):
-        """git config <scope> --unset <key>"""
-        self.__check_key(key)
-        return self.__execute('--unset', key, scope=scope, **kwargs)
 
 
 class Migration:
@@ -286,7 +103,7 @@ class Migration:
         self.local_branches = set()
         self.remote_branches = set()
         self.tags = set()
-        self.git_config = GitConfigurator()
+        self.git = gitwrapper.GitWrapper(env=ENV, git_command=GIT)
 
     def run(self):
         """Execute the migration depending on the arguments"""
@@ -301,7 +118,7 @@ class Migration:
             self._get_branches()
         else:
             # --rebase or --rebasebranch specified
-            verify_working_tree_is_clean()
+            self.verify_working_tree_is_clean()
             if self.options.rebase:
                 self._get_branches()
             elif self.options.rebasebranch:
@@ -312,7 +129,8 @@ class Migration:
         self._fix_branches()
         self._fix_tags()
         self._fix_trunk()
-        optimize_repos()
+        logging.info('--- Optimize Repository ---')
+        self.git.gc_()
         finish_time = datetime.datetime.now()
         logging.info(
             '%s %s finished at %s',
@@ -323,39 +141,53 @@ class Migration:
         logging.info('Elapsed time: %d seconds', duration)
         return RETURNCODE_OK
 
+    def verify_working_tree_is_clean(self):
+        """Check if there are no pending local changes.
+        Exit if there are any.
+        """
+        logging.info('--- Verify working tree is clean ---')
+        tree_status_output = self.git.status(
+            '--porcelain', '--untracked-files=no')
+        if tree_status_output.strip():
+            gitwrapper.exit_with_error(
+                'You have local pending changes:\n%s\n'
+                'The working tree must be clean in order to continue.',
+                tree_status_output)
+        #
+
     def __do_git_svn_init(self):
         """Execute the 'git svn init' command"""
         logging.info('--- Do Git SVN Init ---')
-        command = [GIT, 'svn', 'init', '--prefix=svn/']
+        arguments = ['--prefix=svn/']
         if self.options.username:
-            command.append(f'--username={self.options.username}')
+            arguments.append(f'--username={self.options.username}')
         #
         if not self.options.metadata:
-            command.append('--no-metadata')
+            arguments.append('--no-metadata')
         #
         if self.options.no_minimize_url:
-            command.append('--no-minimize-url')
+            arguments.append('--no-minimize-url')
         #
         if self.options.rootistrunk:
-            command.append(f'--trunk={self.options.svn_url}')
-            return run_long_task(*command)
+            arguments.append(f'--trunk={self.options.svn_url}')
+            return self.git.svn_init(*arguments)
         #
         if self.options.trunk_prefix:
-            command.append(f'--trunk={self.options.trunk_prefix}')
+            arguments.append(f'--trunk={self.options.trunk_prefix}')
         #
         for tags_prefix in self.options.tags_prefixes:
-            command.append(f'--tags={tags_prefix}')
+            arguments.append(f'--tags={tags_prefix}')
         #
         for branches_prefix in self.options.branches_prefixes:
-            command.append(f'--branches={branches_prefix}')
+            arguments.append(f'--branches={branches_prefix}')
         #
-        command.append(self.options.svn_url)
-        return run_long_task(*command)
+        arguments.append(self.options.svn_url)
+        return self.git.svn_init(*arguments)
 
     def __do_git_svn_fetch(self):
         """Execute the 'git svn fetch' command"""
         logging.info('--- Do Git SVN Fetch ---')
-        command = [GIT, 'svn', 'fetch']
+        arguments = []
         if self.options.revision:
             revisions_range = self.options.revision.split(':')
             from_revision = revisions_range[0]
@@ -364,8 +196,8 @@ class Migration:
             except IndexError:
                 to_revision = 'HEAD'
             #
-            command.append('-r')
-            command.append(f'{from_revision}:{to_revision}')
+            arguments.append('-r')
+            arguments.append(f'{from_revision}:{to_revision}')
         #
         if self.options.exclude:
             exclude_prefixes = []
@@ -381,9 +213,9 @@ class Migration:
             regex = '^(?:%s)(?:%s)' % (
                 '|'.join(exclude_prefixes),
                 '|'.join(self.options.exclude))
-            command.append(f'--ignore-paths={regex}')
+            arguments.append(f'--ignore-paths={regex}')
         #
-        return run_long_task(*command)
+        return self.git.svn_fetch(*arguments)
 
     def _clone(self):
         """Clone the Subversion repository"""
@@ -392,9 +224,9 @@ class Migration:
         # Check if local config is possible
         logging.debug(
             'Testing if the --local option is supported by git config …')
-        config_output = self.git_config.get(CI_USER_NAME, exit_on_error=False)
+        config_output = self.git.config.get(CI_USER_NAME, exit_on_error=False)
         if 'unknown option' in config_output.lower():
-            self.git_config = GitConfigurator(local_config_enabled=False)
+            self.git.set_config(local_config_enabled=False)
             logging.debug(
                 '[no] --local option is not supported,'
                 ' omitting it in future config commands.')
@@ -404,7 +236,7 @@ class Migration:
         #
         if os.path.isfile(self.options.authors_file):
             logging.info('Using authors file: %s', self.options.authors_file)
-            self.git_config('svn.authorsfile', self.options.authors_file)
+            self.git.config('svn.authorsfile', self.options.authors_file)
         #
         self.__do_git_svn_fetch()
 
@@ -417,7 +249,7 @@ class Migration:
         logging.debug('Found branches: %r', svn_branches)
         if self.options.rebase:
             logging.info('Doing the SVN fetch; this will take some time …')
-            run_long_task(GIT, 'svn', 'fetch')
+            self.git.svn_fetch()
         #
         cannot_setup_tracking_information = False
         legacy_svn_branch_tracking_message_displayed = False
@@ -431,22 +263,19 @@ class Migration:
                 else:
                     local_branch = branch
                 #
-                get_command_output(GIT, 'checkout', '-f', local_branch)
-                get_command_output(GIT, 'rebase', remote_svn_branch)
+                self.git.checkout('-f', local_branch)
+                self.git.rebase(remote_svn_branch)
                 continue
             #
             if (branch in self.local_branches
                     or branch == DEFAULT_TRUNK):
                 continue
             #
-            untracked_checkout = (
-                GIT, 'checkout', '-b', branch, remote_svn_branch)
             if cannot_setup_tracking_information:
-                get_command_output(*untracked_checkout)
+                self.git.checkout('-b', branch, remote_svn_branch)
             else:
-                track_output = get_command_output(
-                    GIT, 'branch', '--track', branch, remote_svn_branch,
-                    exit_on_error=False)
+                track_output = self.git.branch(
+                    '--track', branch, remote_svn_branch, exit_on_error=False)
                 # As of git 1.8.3.2, tracking information cannot be
                 # set up for remote SVN branches:
                 # <http://git.661346.n2.nabble.com/
@@ -464,7 +293,7 @@ class Migration:
                     logging.debug('The above "fatal" message can be ignored.')
                     logging.debug(
                         'It just means your Git version is 1.8.3.2 or newer.')
-                    get_command_output(*untracked_checkout)
+                    self.git.checkout('-b', branch, remote_svn_branch)
                 else:
                     if not legacy_svn_branch_tracking_message_displayed:
                         logging.warning('*' * 68)
@@ -479,7 +308,7 @@ class Migration:
                         logging.warning('*' * 68)
                         legacy_svn_branch_tracking_message_displayed = True
                     #
-                    get_command_output(GIT, 'checkout', branch)
+                    self.git.checkout(branch)
                 #
             #
         #
@@ -488,7 +317,7 @@ class Migration:
         """Convert the svn/tags/* branches to git tags"""
         logging.info('--- Fix Tags ---')
         saved_originals = {
-            key: self.git_config.get(key, exit_on_error=False).strip()
+            key: self.git.config.get(key, exit_on_error=False).strip()
             for key in (CI_USER_NAME, CI_USER_EMAIL)}
         try:
             for tag_name in sorted(self.tags):
@@ -500,24 +329,21 @@ class Migration:
                 tag_name = tag_name.strip()
                 tag_id = PRX_SVNTAGS_PREFIX.sub('', tag_name)
                 commit_data = {
-                    key: get_command_output(
-                        GIT, 'log', '-1',
-                        f'--pretty=format:{value}', tag_name)
+                    key: self.git.log(
+                        '-1', f'--pretty=format:{value}', tag_name)
                     for (key, value) in COMMIT_DATA_FORMATS.items()}
-                self.git_config(CI_USER_NAME, commit_data[CD_AUTHOR_NAME])
-                self.git_config(CI_USER_EMAIL, commit_data[CD_AUTHOR_EMAIL])
+                self.git.config(CI_USER_NAME, commit_data[CD_AUTHOR_NAME])
+                self.git.config(CI_USER_EMAIL, commit_data[CD_AUTHOR_EMAIL])
                 original_git_committer_date = ENV.get(ENV_GIT_COMMITTER_DATE)
                 ENV[ENV_GIT_COMMITTER_DATE] = commit_data[CD_DATE]
-                get_command_output(
-                    GIT, 'tag', '-a',
-                    '-m', commit_data[CD_COMMENT],
-                    tag_id, tag_name)
+                self.git.tag(
+                    '-a', '-m', commit_data[CD_COMMENT], tag_id, tag_name)
                 if original_git_committer_date is None:
                     del ENV[ENV_GIT_COMMITTER_DATE]
                 else:
                     ENV[ENV_GIT_COMMITTER_DATE] = original_git_committer_date
                 #
-                get_command_output(GIT, 'branch', '-d', '-r', tag_name)
+                self.git.branch('-d', '-r', tag_name)
             #
         finally:
             # We only change the git config values
@@ -526,9 +352,9 @@ class Migration:
             if self.tags:
                 for (key, value) in saved_originals.items():
                     if value:
-                        self.git_config(key, value)
+                        self.git.config(key, value)
                     else:
-                        self.git_config.unset(key)
+                        self.git.config.unset(key)
                     #
                 #
             #
@@ -537,15 +363,28 @@ class Migration:
     def _fix_trunk(self):
         """Fix trunk."""
         logging.info('--- Fix Trunk ---')
-        if self.options.rebase and DEFAULT_TRUNK in self.remote_branches:
-            for command in (
-                    (GIT, 'checkout', 'svn/trunk'),
-                    (GIT, 'branch', '-D', self.__initial_branch),
-                    (GIT, 'checkout', '-f', '-b', self.__initial_branch)):
-                get_command_output(*command)
-            #
+        if DEFAULT_TRUNK in self.remote_branches and not self.options.rebase:
+            self.git.checkout('svn/trunk')
+            self.git.branch('-D', self.__initial_branch)
+            self.git.checkout('-f', '-b', self.__initial_branch)
         else:
-            get_command_output(GIT, 'checkout', '-f', self.__initial_branch)
+            self.git.checkout('-f', self.__initial_branch)
+        #
+
+    def find_branches(self, remote=False):
+        """Yield local or remote branches,
+        taking care to ignore console color codes and ignoring the
+        '*' character used to indicate the currently selected branch.
+        """
+        arguments = ['--no-color']
+        if remote:
+            arguments.append('-r')
+        #
+        for branch in self.git.branch(*arguments).splitlines():
+            branch = branch.replace('*', '').strip()
+            if branch:
+                yield branch
+            #
         #
 
     def _get_branches(self):
@@ -553,8 +392,8 @@ class Migration:
         Store each of them in the appropriate set.
         """
         logging.info('--- Get Branches ---')
-        self.local_branches = set(find_branches())
-        self.remote_branches = set(find_branches(remote=True))
+        self.local_branches = set(self.find_branches())
+        self.remote_branches = set(self.find_branches(remote=True))
         # Tags are remote branches that start with "tags/".
         self.tags = {
             single_branch for single_branch in self.remote_branches
@@ -572,24 +411,24 @@ class Migration:
         try:
             found_local_branch = local_branch_candidates.pop()
         except KeyError:
-            exit_with_error(
+            gitwrapper.exit_with_error(
                 'No local branches named %r found.',
                 self.options.rebasebranch)
         #
         if local_branch_candidates:
-            exit_with_error(
+            gitwrapper.exit_with_error(
                 'Too many matching local branches found: %s, %s.',
                 found_local_branch,
                 ', '.join(local_branch_candidates))
         #
         if not remote_branch_candidates:
-            exit_with_error(
+            gitwrapper.exit_with_error(
                 'No remote branches named %r found.',
                 self.options.rebasebranch)
         #
         if len(remote_branch_candidates) > 2:
             # 1 if remote is not pushed, 2 if its pushed to remote
-            exit_with_error(
+            gitwrapper.exit_with_error(
                 'Too many matching remote branches found: %s.',
                 ', '.join(remote_branch_candidates))
         #
