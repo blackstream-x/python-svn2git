@@ -200,6 +200,7 @@ class LogExaminer:
                     self.revisions_by_author[author].add(revision)
                 except KeyError:
                     print(author)
+                    sys.stdout.flush()
                     self.revisions_by_author[author] = set([revision])
                 #
             #
