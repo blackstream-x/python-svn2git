@@ -105,7 +105,7 @@ class FullPush:
         # 2. Check for the credential.helper config
         if not self.options.ignore_missing_credential_helper:
             if remote_url.startswith('http') and not self.git.config.get(
-                    'credential.helper', exit_on_error=False):
+                    'credential.helper', exit_on_error=False, scope=None):
                 gitwrapper.exit_with_error(
                     'The credential.helper git option is not set.\n'
                     'With HTTP based remotes, it is strongly advised'
