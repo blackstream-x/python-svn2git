@@ -540,7 +540,7 @@ class Migration:
     def _fix_trunk(self):
         """Fix trunk."""
         logging.info('--- Fix Trunk ---')
-        if self.options.rebase and DEFAULT_TRUNK in self.remote_branches:
+        if DEFAULT_TRUNK in self.remote_branches and not self.options.rebase:
             for command in (
                     (GIT, 'checkout', 'svn/trunk'),
                     (GIT, 'branch', '-D', self.__initial_branch),
