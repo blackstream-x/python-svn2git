@@ -368,10 +368,13 @@ class FullPush:
             # push tags one by one
             highest_returncode = RETURNCODE_OK
             for current_tag in self.all_tags:
-                tagref = f'refs/tags/${current_tag}'
+                tagref = f'refs/tags/{current_tag}'
                 push_returncode = self.git.push(
                     ORIGIN, f'{tagref}:{tagref}',
                     exit_on_error=False)
+                if push_returncode:
+                    self.tags_failed.append(current_tag)
+                #
                 highest_returncode = max(push_returncode, highest_returncode)
             #
             return highest_returncode
@@ -401,7 +404,7 @@ class FullPush:
             #
             logging.error(' - %s push failed at commit:', branch)
             for line in failed_commit.splitlines():
-                logging.info('   %s', line)
+                logging.error('   %s', line)
             #
         #
 
