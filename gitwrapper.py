@@ -274,6 +274,18 @@ class GitWrapper(BaseGitWrapper):
         """
         return self.get_returncode('gc', *arguments, **kwargs)
 
+    def push(self, *arguments, **kwargs):
+        """git push + arguments
+        Passthru output and return returncode
+        """
+        return self.get_returncode('push', *arguments, **kwargs)
+
+    def showref(self, *arguments, **kwargs):
+        """git show-ref + arguments
+        Passthru output and return returncode
+        """
+        return self.get_returncode('show-ref', *arguments, **kwargs)
+
     def svn_fetch(self, *arguments, **kwargs):
         """git svn fetch + arguments
         Passthru output and return returncode
@@ -311,6 +323,12 @@ class GitWrapper(BaseGitWrapper):
         Capture stderr and stdout and return them combined
         """
         return self.get_output('rebase', *arguments, **kwargs)
+
+    def remote(self, *arguments, **kwargs):
+        """git remote + arguments
+        Capture stderr and stdout and return them combined
+        """
+        return self.get_output('remote', *arguments, **kwargs)
 
     def status(self, *arguments, **kwargs):
         """git status + arguments
