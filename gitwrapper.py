@@ -91,41 +91,6 @@ def get_command_result(*command, exit_on_error=True, **kwargs):
     return result
 
 
-def get_command_output(*command, **kwargs):
-    """Run the specified command and return its output
-    (stdout and stderr combined).
-    """
-    kwargs.update(
-        dict(stdout=subprocess.PIPE,
-             stderr=subprocess.PIPE,
-             loglevel=logging.DEBUG))
-    command_result = get_command_result(*command, **kwargs)
-    output_lines = []
-    for stderr_line in command_result.stderr.decode().splitlines():
-        logging.debug('[Command stderr] %s', stderr_line)
-        output_lines.append(stderr_line)
-    #
-    for stdout_line in command_result.stdout.decode().splitlines():
-        logging.debug('[Command stdout] %s', stdout_line)
-        output_lines.append(stdout_line)
-    #
-    return '\n'.join(output_lines)
-
-
-def get_command_returncode(*command, **kwargs):
-    """Run the specified (probably long running)
-    command and return its returncode.
-    The output streams (stdout and stderr) are not captured,
-    allowing normal user interaction with the command
-    (eg. for password input).
-    """
-    kwargs.update(
-        dict(stderr=None,
-             stdout=None,
-             loglevel=logging.INFO))
-    return get_command_result(*command, **kwargs).returncode
-
-
 #
 # Classes
 #
@@ -138,13 +103,13 @@ class BaseGitWrapper:
     def __init__(self,
                  env=None,
                  git_command=DEFAULT_GIT):
-        """Set the internal env and git_command attributes"""
+        """Set the env and git_command attributes"""
         self.env = env
         self.git_command = git_command
 
-    def get_output(self, *arguments, **kwargs):
+    def get_output(self, *arguments, log_output=True, **kwargs):
         """Run git with the specified arguments
-        and return its output (stdout and stderr) combined.
+        and return its output (stderr and stdout) combined.
         """
         kwargs.update(
             dict(stdout=subprocess.PIPE,
@@ -153,16 +118,33 @@ class BaseGitWrapper:
         kwargs.setdefault('env', self.env)
         command_result = get_command_result(
             self.git_command, *arguments, **kwargs)
-        output_lines = []
-        for stderr_line in command_result.stderr.decode().splitlines():
-            logging.debug('[Command stderr] %s', stderr_line)
-            output_lines.append(stderr_line)
+        stderr_text = command_result.stderr.decode()
+        stdout_text = command_result.stdout.decode()
+        if log_output:
+            for stderr_line in stderr_text.splitlines():
+                logging.debug('[Command stderr] %s', stderr_line)
+            #
+            for stdout_line in stdout_text.splitlines():
+                logging.debug('[Command stdout] %s', stdout_line)
+            #
         #
-        for stdout_line in command_result.stdout.decode().splitlines():
-            logging.debug('[Command stdout] %s', stdout_line)
-            output_lines.append(stdout_line)
-        #
-        return '\n'.join(output_lines)
+        return '\n'.join((stderr_text, stdout_text))
+
+    def get_returncode(self, *arguments, **kwargs):
+        """Run git with the specified arguments
+        and return the command returncode.
+        The output streams (stdout and stderr) are not captured,
+        allowing normal user interaction with the command
+        (eg. for password input).
+        """
+        kwargs.update(
+            dict(stdout=None,
+                 stderr=None,
+                 loglevel=logging.INFO))
+        kwargs.setdefault('env', self.env)
+        command_result = get_command_result(
+            self.git_command, *arguments, **kwargs)
+        return command_result.returncode
 
 
 class GitConfigWrapper(BaseGitWrapper):
@@ -182,8 +164,8 @@ class GitConfigWrapper(BaseGitWrapper):
                  env=None,
                  git_command=DEFAULT_GIT,
                  local_config_enabled=True):
-        """Set the internal __env, __git_command,
-        and __local_config_enabled attributes
+        """Set the env and git_command attributes via the parent class,
+        plus the internal __local_config_enabled attribute.
         """
         super().__init__(env=env, git_command=git_command)
         self.__local_config_enabled = local_config_enabled
@@ -236,35 +218,19 @@ class GitWrapper(BaseGitWrapper):
                  env=None,
                  git_command=DEFAULT_GIT,
                  local_config_enabled=True):
-        """Set the internal __env, and __git_command attributes,
-        plus the config wrapper
+        """Set the env and git_command attributes via the parent class,
+        plus the wrapper for 'git config'.
         """
         super().__init__(env=env, git_command=git_command)
         self.config = None
         self.set_config(local_config_enabled=local_config_enabled)
 
     def set_config(self, local_config_enabled=True):
-        """Set the config wrapper"""
+        """Set the wrapper for 'git config'"""
         self.config = GitConfigWrapper(
             env=self.env,
             git_command=self.git_command,
             local_config_enabled=local_config_enabled)
-
-    def get_returncode(self, *arguments, **kwargs):
-        """Run git with the specified arguments
-        and return the process returncode.
-        The output streams (stdout and stderr) are not captured,
-        allowing normal user interaction with the command
-        (eg. for password input).
-        """
-        kwargs.update(
-            dict(stdout=None,
-                 stderr=None,
-                 loglevel=logging.INFO))
-        kwargs.setdefault('env', self.env)
-        command_result = get_command_result(
-            self.git_command, *arguments, **kwargs)
-        return command_result.returncode
 
     # Commands returning only the returncode
 

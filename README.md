@@ -88,7 +88,7 @@ The usage message produced by `push_all.py --help` is:
 
 ```
 usage: push_all.py [-h] [-v] [--set-origin GIT_URL] [--batch-size BATCH_SIZE]
-                   [--ignore-failures] [--ignore-missing-credential-helper]
+                   [--fail-fast] [--ignore-missing-credential-helper]
 
 Push the contents of a local Git repository to its origin URL
 
@@ -107,11 +107,10 @@ optional arguments:
                         again after a successful push, up to the given
                         maximum). If this option is omitted or set to zero, a
                         global push will be attempted.
-  --ignore-failures     Continue with pushing tags even if not all branches
-                        could be pushed.
+  --fail-fast           Exit directly after the first branch failed to be
+                        pushed.
   --ignore-missing-credential-helper
-                        Ignore (the lack of) the credential.helper git option
-
+                        Ignore (the lack of) the credential.helper git option.
 ```
 
 ## unique_commit_authors.py

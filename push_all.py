@@ -19,7 +19,6 @@ import argparse
 import datetime
 import logging
 import os
-import re
 import sys
 
 # local module
@@ -34,9 +33,6 @@ import gitwrapper
 
 MESSAGE_FORMAT_PURE = '%(message)s'
 MESSAGE_FORMAT_WITH_LEVELNAME = '%(levelname)-8s\u2551 %(message)s'
-
-PRX_SVNTAGS_PREFIX = re.compile(r'^svn/tags/')
-PRX_SVN_PREFIX = re.compile(r'^svn/')
 
 RETURNCODE_OK = 0
 RETURNCODE_ERROR = 1
@@ -88,6 +84,7 @@ class FullPush:
         self.all_branches = []
         self.all_tags = []
         self.branches_failed = {}
+        self.branches_pushed = []
         self.tags_failed = []
 
     def run(self):
@@ -98,9 +95,13 @@ class FullPush:
             SCRIPT_NAME,
             VERSION,
             start_time)
+        logging.info('-' * 72)
         #
         # 1. Check for the origin or set it if required
-        remote_url = self.get_remote_url()
+        try:
+            remote_url = self.get_remote_url()
+        except ValueError as error:
+            gitwrapper.exit_with_error(str(error))
         #
         # 2. Check for the credential.helper config
         if not self.options.ignore_missing_credential_helper:
@@ -119,17 +120,17 @@ class FullPush:
         #
         # 3. Push branches
         branch_result = self.push_branches()
-        successfully_pushed_branches = [
-            branch for branch in self.all_branches
-            if branch not in self.branches_failed]
         if branch_result:
-            if not successfully_pushed_branches:
+            logging.error('-' * 72)
+            if not self.branches_pushed:
                 gitwrapper.exit_with_error('All branch pushes failed!')
-            elif not self.options.ignore_failures:
+            #
+            if self.options.fail_fast:
                 logging.error('Not all branches could be pushed.')
                 self.show_branches_statistics()
+                logging.error('-' * 72)
                 gitwrapper.exit_with_error(
-                    'Call this script with the --ignore_failures option\n'
+                    'Run this script again without the --fail-fast option\n'
                     'to push the tags')
             #
         #
@@ -137,9 +138,11 @@ class FullPush:
         tags_result = self.push_tags()
         #
         # 5. Output results
+        logging.info('-' * 72)
         self.show_branches_statistics()
         self.show_tags_statistics()
         #
+        logging.info('-' * 72)
         finish_time = datetime.datetime.now()
         logging.info(
             '%s %s finished at %s',
@@ -166,37 +169,32 @@ class FullPush:
                 configured_push_urls[remote_name] = url
             #
         #
-        remote_url = self.options.set_origin
-        if remote_url:
-            try:
-                origin_url = configured_push_urls[ORIGIN]
-            except KeyError:
-                pass
-            else:
-                if origin_url != remote_url:
-                    gitwrapper.exit_with_error(
-                        'A different URL is already preconfigured for %s:\n'
-                        '  %s\n'
-                        'If you want tu use that one,'
-                        ' omit the --set-origin option.\n',
-                        'Otherwise, remove the existing remote and try again.',
-                        ORIGIN, origin_url)
-                #
+        specified_url = self.options.set_origin
+        origin_url = configured_push_urls.get(ORIGIN)
+        if specified_url and origin_url:
+            if origin_url == specified_url:
+                logging.info('Using preconfigured URL %s', origin_url)
+                return origin_url
             #
-            logging.info('Configuring URL %s for %s', remote_url, ORIGIN)
-            self.git.remote('add', ORIGIN, remote_url)
-        else:
-            remote_url = configured_push_urls.get(ORIGIN)
-            if remote_url:
-                logging.info('Using preconfigured URL %s', remote_url)
-            #
-        if not remote_url:
-            gitwrapper.exit_with_error(
-                'No remote URL for %s preconfigured and none specified.\n'
-                'Please specify a remote URL with --set-origin!',
-                ORIGIN)
+            raise ValueError(
+                'A different URL is already preconfigured for'
+                f' {ORIGIN}:\n  {origin_url}\n'
+                'If you want tu use that one,'
+                ' omit the --set-origin option.\n',
+                'Otherwise, remove the existing remote and try again.')
         #
-        return remote_url
+        if specified_url:
+            logging.info('Configuring URL %s for %s', specified_url, ORIGIN)
+            self.git.remote('add', ORIGIN, specified_url)
+            return specified_url
+        #
+        if origin_url:
+            logging.info('Using preconfigured URL %s', origin_url)
+            return origin_url
+        #
+        raise ValueError(
+            f'No remote URL for {ORIGIN} preconfigured and none specified.\n'
+            'Please specify a remote URL with --set-origin!')
 
     def get_commit_log(self, commit_id):
         """Return a formatted commit log entry in a form like:
@@ -246,7 +244,7 @@ class FullPush:
         or RETURNCODE_ERROR on any errors
         """
         # Determine a list of local branches.
-        # Put branches with a name in one of the default brnach names
+        # Put branches with a name in one of the default branch names
         # in front.
         default_branches = []
         remaining_branches = []
@@ -258,6 +256,8 @@ class FullPush:
             #
         #
         self.all_branches = default_branches + remaining_branches
+        self.branches_failed.clear()
+        self.branches_pushed.clear()
         if self.options.batch_size:
             # push branches one by one in batches of maximum batch size
             highest_returncode = RETURNCODE_OK
@@ -265,6 +265,9 @@ class FullPush:
                 push_returncode = self.push_single_branch(
                     current_branch,
                     maximum_batch_size=self.options.batch_size)
+                if push_returncode and self.options.fail_fast:
+                    return push_returncode
+                #
                 highest_returncode = max(push_returncode, highest_returncode)
             #
             return highest_returncode
@@ -272,9 +275,10 @@ class FullPush:
         push_returncode = self.git.push(
             '-u', 'origin', '--all', exit_on_error=False)
         if push_returncode:
-            for current_branch in self.all_branches:
-                self.branches_failed[current_branch] = '(global push failed)'
-            #
+            self.branches_failed = dict.fromkeys(
+                self.all_branches, '(global push failed)')
+        else:
+            self.branches_pushed = self.all_branches
         #
         return push_returncode
 
@@ -304,8 +308,13 @@ class FullPush:
             self.git.log(
                 '--first-parent',
                 '--pretty=format:x',
-                commits_range).splitlines())
+                commits_range,
+                log_output=False).splitlines())
         #
+        logging.info(
+            '%s commits to be pushed in %r',
+            number_to_push,
+            branch_name)
         push_returncode = RETURNCODE_OK
         last_offset = number_to_push
         batch_size = maximum_batch_size
@@ -344,9 +353,14 @@ class FullPush:
                 last_offset = last_offset - batch_size
                 pushed_commits += batch_size
                 logging.info('… ok')
-                if batch_size <= maximum_batch_size // 2:
+                # Double batch size (up to maximum)
+                new_batch_size = batch_size * 2
+                if new_batch_size > maximum_batch_size:
+                    new_batch_size = maximum_batch_size
+                #
+                if new_batch_size > batch_size:
                     logging.info('Increasing batch size again.')
-                    batch_size = batch_size * 2
+                    batch_size = new_batch_size
                 #
             #
         #
@@ -355,6 +369,7 @@ class FullPush:
             '%s of %s commits have been pushed successfully.',
             pushed_commits,
             number_to_push)
+        self.branches_pushed.append(branch_name)
         return push_returncode
 
     def push_tags(self):
@@ -364,6 +379,7 @@ class FullPush:
         or RETURNCODE_ERROR on any errors
         """
         self.all_tags = self.git.tag('--list').splitlines()
+        self.tags_failed.clear()
         if self.options.batch_size:
             # push tags one by one
             highest_returncode = RETURNCODE_OK
@@ -390,21 +406,30 @@ class FullPush:
         """Show statistics for branches"""
         total = len(self.all_branches)
         failed = len(self.branches_failed)
-        successful = total - failed
+        successful = len(self.branches_pushed)
+        omitted = total - successful - failed
         logging.info('---- Branches summary ----')
         logging.info(
             '%s of %s pushed successfully, %s failed',
             total, successful, failed)
+        if omitted:
+            logging.info('%s branches omitted', omitted)
+        #
         for branch in self.all_branches:
             try:
                 failed_commit = self.branches_failed[branch]
             except KeyError:
-                logging.info(' - %s pushed successfully', branch)
+                if branch in self.branches_pushed:
+                    logging.info(' - %s pushed successfully', branch)
+                else:
+                    logging.info(
+                        ' - %s not pushed due to previous errors', branch)
+                #
                 continue
             #
             logging.error(' - %s push failed at commit:', branch)
             for line in failed_commit.splitlines():
-                logging.error('   %s', line)
+                logging.error('     %s', line)
             #
         #
 
@@ -462,14 +487,13 @@ def __get_arguments():
         ' If this option is omitted or set to zero,'
         ' a global push will be attempted.')
     argument_parser.add_argument(
-        '--ignore-failures',
+        '--fail-fast',
         action='store_true',
-        help='Continue with pushing tags'
-        ' even if not all branches could be pushed.')
+        help='Exit directly after the first branch failed to be pushed.')
     argument_parser.add_argument(
         '--ignore-missing-credential-helper',
         action='store_true',
-        help='Ignore (the lack of) the credential.helper git option')
+        help='Ignore (the lack of) the credential.helper git option.')
     arguments = argument_parser.parse_args()
     if arguments.batch_size < 0:
         gitwrapper.exit_with_error(
