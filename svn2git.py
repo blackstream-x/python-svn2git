@@ -221,6 +221,21 @@ class Migration:
         """Clone the Subversion repository"""
         logging.info('=== Clone ===')
         self.__do_git_svn_init()
+        # Determine initial branch name
+        with open(os.path.join('.git', 'HEAD'), mode='rt') as head_file:
+            head_data = head_file.read()
+        #
+        try:
+            self.__initial_branch = re.match(
+                r'\Aref:\s+refs/heads/(\w+)',
+                head_data).group(1)
+        except AttributeError:
+            logging.warning(
+                'Could not read the initial branch name from .git/HEAD,')
+            logging.warning('so guessing %r.', self.__initial_branch)
+        else:
+            logging.info('Initial branch name: %r', self.__initial_branch)
+        #
         # Check if local config is possible
         logging.debug(
             'Testing if the --local option is supported by git config …')

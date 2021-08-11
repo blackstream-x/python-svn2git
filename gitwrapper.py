@@ -128,6 +128,12 @@ class BaseGitWrapper:
                 logging.debug('[Command stdout] %s', stdout_line)
             #
         #
+        if not stderr_text:
+            return stdout_text
+        #
+        if not stdout_text:
+            return stderr_text
+        #
         return '\n'.join((stderr_text, stdout_text))
 
     def get_returncode(self, *arguments, **kwargs):
