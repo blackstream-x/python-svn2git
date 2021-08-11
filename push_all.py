@@ -288,6 +288,8 @@ class FullPush:
         but half the batch size on each failure.
         If the batch size cannot be reduced any further,
         return the last returncode.
+
+        Adapted from <https://stackoverflow.com/a/51468389>.
         """
         logging.info('Switching to branch %r', branch_name)
         self.git.checkout(branch_name)
