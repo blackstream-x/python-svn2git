@@ -1,33 +1,18 @@
 # svn2git example
 
-Small walkthrough to demonstrate the usage of the scripts in this repository
+Small walkthrough to demonstrate the usage of the scripts
 
-## 0. Set up the environment
+## 0. Create the subversion repository
 
-This is a special environment set up exclusively for this example,
-with the SVN repository located at the URL `file:///tmp/svn2git-demo/svn-repos/example`.
+This is a Subversion repository set up for demonstration purposes,
+using a dump that head been created some weeks earlier.
+It is accessible through the URL `file:///tmp/svn2git-demo/svn-repos/example`
+on the local machine only.
 
-In a real use case, the Subversion repository would already exist.
-
-### 0.1 Set up directories
-
-```
-user@machine [~] $ export LANG=C
-user@machine [~] $ ls -l /tmp/svn2git-demo
-ls: cannot access '/tmp/svn2git-demo': No such file or directory
-user@machine [~] $ mkdir -p /tmp/svn2git-demo/{git,svn}-repos
-user@machine [~] $ ls -l /tmp/svn2git-demo
-total 0
-drwxr-xr-x 2 rainer rainer 40 Jul 29 14:51 git-repos
-drwxr-xr-x 2 rainer rainer 40 Jul 29 14:51 svn-repos
-user@machine [~] $
-```
-
-### 0.2 Create the subversion repository
-
-... from a dump created earlier on the same day
+In a real use case, this repository would already exist.
 
 ```
+user@machine [~] $ mkdir -p /tmp/svn2git-demo/svn-repos
 user@machine [~] $ svnadmin create /tmp/svn2git-demo/svn-repos/example
 user@machine [~] $ svnadmin load /tmp/svn2git-demo/svn-repos/example < example.dump
 <<< Started new transaction, based on original revision 1
@@ -102,103 +87,11 @@ user@machine [~] $ svnadmin load /tmp/svn2git-demo/svn-repos/example < example.d
 user@machine [~] $
 ```
 
-### 0.3 View the log of the SVN repository
-
-```
-user@machine [~] $ svn log -v -r 1:HEAD file:///tmp/svn2git-demo/svn-repos/example
-------------------------------------------------------------------------
-r1 | user1 | 2021-07-28 11:13:22 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /branches
-   A /tags
-   A /trunk
-
-Initialize base structure
-------------------------------------------------------------------------
-r2 | user2 | 2021-07-28 11:22:13 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /trunk/README.md
-
-Add first document in trunk
-------------------------------------------------------------------------
-r3 | user1 | 2021-07-28 13:00:56 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /branches/1.0 (from /trunk:1)
-   A /branches/1.0/README.md (from /trunk/README.md:2)
-
-Add the 1.0 branch
-------------------------------------------------------------------------
-r4 | user2 | 2021-07-28 13:32:17 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   M /branches/1.0/README.md
-   A /branches/1.0/changes.md
-
-Working in branch 1.0
-------------------------------------------------------------------------
-r5 | releasemanager | 2021-07-28 13:34:42 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /tags/release-1.0.0 (from /branches/1.0:4)
-
-Tag release 1.0.0
-------------------------------------------------------------------------
-r6 | user2 | 2021-07-28 13:43:17 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   M /branches/1.0/changes.md
-
-More work in branch 1.0
-------------------------------------------------------------------------
-r7 | releasemanager | 2021-07-28 13:44:01 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /tags/release-1.0.1 (from /branches/1.0:6)
-
-Tag release 1.0.1
-------------------------------------------------------------------------
-r8 | project-admin | 2021-07-28 13:47:38 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /branches/1.1 (from /branches/1.0:7)
-
-New Branch 1.1 (from 1.0)
-------------------------------------------------------------------------
-r9 | user2 | 2021-07-28 13:49:56 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /branches/1.0/new-file.md
-
-Ongoing work in branch 1.0
-------------------------------------------------------------------------
-r10 | user3 | 2021-07-28 13:52:54 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   M /branches/1.1/changes.md
-
-Work in branch 1.1
-------------------------------------------------------------------------
-r11 | releasemanager | 2021-07-28 13:53:46 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /tags/release-1.1.0 (from /branches/1.1:10)
-
-Tag release 1.1.0
-------------------------------------------------------------------------
-r12 | user4 | 2021-07-28 13:59:09 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /trunk/changes.md
-
-Work in trunk
-------------------------------------------------------------------------
-r13 | major-release-manager | 2021-07-28 14:00:27 +0200 (Wed, 28 Jul 2021) | 1 line
-Changed paths:
-   A /tags/release-2.0 (from /trunk:12)
-
-Tag release 2.0
-------------------------------------------------------------------------
-user@machine [~] $
-```
-
 ## 1. Determine SVN repository authors
 
-Per-user statistics are not required, I just wanted to show off here.
-
 ```
-user@machine [~] $ ~/python-svn2git/unique_commit_authors.py --per-user-statistics file:///tmp/svn2git-demo/svn-repos/example > example-authors.txt
-INFO    ║ unique_commit_authors.py start at 2021-07-29 15:11:34.420813
+user@machine [~] $ ~/python-svn2git/unique_commit_authors.py file:///tmp/svn2git-demo/svn-repos/example > example-authors.txt
+INFO    ║ unique_commit_authors.py v2.5.0-rc2 started at 2021-08-12 15:06:50.853789
 INFO    ║ Repository Root: file:///tmp/svn2git-demo/svn-repos/example
 INFO    ║ HEAD Revision:   13
 INFO    ║ ------------------------------------------------------------------------
@@ -209,26 +102,10 @@ INFO    ║ "svn log" highest returncode: 0
 INFO    ║ ------------------------------------------------------------------------
 INFO    ║ unique_commit_authors.py statistics
 INFO    ║ ------------------------------------------------------------------------
-INFO    ║ Examined 13 revisions in 0.043 seconds
-INFO    ║ (ø 303.4 revisions per second).
+INFO    ║ Examined 13 revisions in 0.047 seconds
+INFO    ║ (ø 277.4 revisions per second).
 INFO    ║ ------------------------------------------------------------------------
-INFO    ║ unique_commit_authors.py per-user statistics
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'major-release-manager' commited 1 revisions: 13
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'project-admin' commited 1 revisions: 8
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'releasemanager' commited 3 revisions: 5, 7, 11
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'user1' commited 2 revisions: 1, 3
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'user2' commited 4 revisions: 2, 4, 6, 9
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'user3' commited 1 revisions: 10
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ 'user4' commited 1 revisions: 12
-INFO    ║ ------------------------------------------------------------------------
-INFO    ║ unique_commit_authors.py finish at 2021-07-29 15:11:34.465571
+INFO    ║ unique_commit_authors.py v2.5.0-rc2 finished at 2021-08-12 15:06:50.901532
 user@machine [~] $
 user@machine [~] $ cat example-authors.txt
 user1
@@ -254,32 +131,27 @@ user3 =  Donald Duck <donald.duck@local.example.com>
 user4 =  Mickey Mouse <mickey.mouse@local.example.com>
 major-release-manager = Major Malfunction <major.malfunction@local.example.com>
 user@machine [~] $
-
 ```
 
 ## 3. Do the migration
 
+The script autodetects the name of the inital branch.
+In this case, that branch is named `main` according to my global setting
+of the `init.defaultbranch` Git option.
+
 ```
-user@machine [~] $ cd /tmp/svn2git-demo/git-repos/
-user@machine [git-repos] $ mkdir example && cd example
+user@machine [~] $ mkdir -p /tmp/svn2git-demo/git-repos/example
+user@machine [~] $ cd /tmp/svn2git-demo/git-repos/example
 user@machine [example] $ ~/python-svn2git/svn2git.py --authors ~/example-authors.txt file:///tmp/svn2git-demo/svn-repos/example
+INFO    ║ svn2git.py v2.5.0-rc2 started at 2021-08-12 15:13:00.135385
 INFO    ║ === Clone ===
 INFO    ║ --- Do Git SVN Init ---
-INFO    ║ Executing command: git svn init --prefix=svn/ --no-metadata --trunk=trunk --tags=tags --branches=branches file:///tmp/svn2git-demo/svn-repos/example
-hint: Using 'master' as the name for the initial branch. This default branch name
-hint: is subject to change. To configure the initial branch name to use in all
-hint: of your new repositories, which will suppress this warning, call:
-hint:
-hint: 	git config --global init.defaultBranch <name>
-hint:
-hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
-hint: 'development'. The just-created branch can be renamed via this command:
-hint:
-hint: 	git branch -m <name>
+INFO    ║ [Executing command] git svn init --prefix=svn/ --no-metadata --trunk=trunk --tags=tags --branches=branches file:///tmp/svn2git-demo/svn-repos/example
 Initialized empty Git repository in /tmp/svn2git-demo/git-repos/example/.git/
+INFO    ║ Initial branch name: 'main'
 INFO    ║ Using authors file: /home/rainer/example-authors.txt
 INFO    ║ --- Do Git SVN Fetch ---
-INFO    ║ Executing command: git svn fetch
+INFO    ║ [Executing command] git svn fetch
 r1 = 2866c7ef01d7a390979cb1ac858a0fc70017e50a (refs/remotes/svn/trunk)
 	A	README.md
 r2 = e431ee34b532e854bd429e83fa89d2a555e60bf8 (refs/remotes/svn/trunk)
@@ -332,23 +204,28 @@ INFO    ║ --- Fix Branches ---
 INFO    ║ --- Fix Tags ---
 INFO    ║ --- Fix Trunk ---
 INFO    ║ --- Optimize Repository ---
-INFO    ║ Executing command: git gc
+INFO    ║ [Executing command] git gc
 Enumerating objects: 31, done.
 Counting objects: 100% (31/31), done.
 Delta compression using up to 4 threads
 Compressing objects: 100% (24/24), done.
 Writing objects: 100% (31/31), done.
 Total 31 (delta 1), reused 0 (delta 0), pack-reused 0
+INFO    ║ svn2git.py v2.5.0-rc2 finished at 2021-08-12 15:13:04.998273
+INFO    ║ Elapsed time: 4 seconds
 user@machine [example] $
 ```
 
 ## 4. Push Git repository to the server
 
-I created <https://github.com/blackstream-x/svn2git-example> for this demonstration.
+I created <https://github.com/blackstream-x/svn2git-2.5-example> for this demonstration.
 
 ```
-user@machine [example] $ git remote add origin git@github.com:blackstream-x/svn2git-example.git
-user@machine [example] $ git push --all origin
+user@machine [example] $ ~/python-svn2git/push_all.py --set-origin git@github.com:blackstream-x/svn2git-2.5-example.git
+INFO    ║ push_all.py v2.5.0-rc2 started at 2021-08-12 15:18:28.721657
+INFO    ║ ------------------------------------------------------------------------
+INFO    ║ Configuring URL git@github.com:blackstream-x/svn2git-2.5-example.git for origin
+INFO    ║ [Executing command] git push -u origin --all
 Enumerating objects: 23, done.
 Counting objects: 100% (23/23), done.
 Delta compression using up to 4 threads
@@ -356,22 +233,40 @@ Compressing objects: 100% (15/15), done.
 Writing objects: 100% (23/23), 2.28 KiB | 2.28 MiB/s, done.
 Total 23 (delta 1), reused 23 (delta 1), pack-reused 0
 remote: Resolving deltas: 100% (1/1), done.
-To github.com:blackstream-x/svn2git-example.git
+To github.com:blackstream-x/svn2git-2.5-example.git
  * [new branch]      1.0 -> 1.0
  * [new branch]      1.1 -> 1.1
- * [new branch]      master -> master
-user@machine [example] $ git push --tags origin
+ * [new branch]      main -> main
+Branch '1.0' set up to track remote branch '1.0' from 'origin'.
+Branch '1.1' set up to track remote branch '1.1' from 'origin'.
+Branch 'main' set up to track remote branch 'main' from 'origin'.
+INFO    ║ [Executing command] git push -u origin --tags
 Enumerating objects: 8, done.
 Counting objects: 100% (8/8), done.
 Delta compression using up to 4 threads
 Compressing objects: 100% (8/8), done.
 Writing objects: 100% (8/8), 1.26 KiB | 1.26 MiB/s, done.
 Total 8 (delta 0), reused 8 (delta 0), pack-reused 0
-To github.com:blackstream-x/svn2git-example.git
+To github.com:blackstream-x/svn2git-2.5-example.git
  * [new tag]         release-1.0.0 -> release-1.0.0
  * [new tag]         release-1.0.1 -> release-1.0.1
  * [new tag]         release-1.1.0 -> release-1.1.0
  * [new tag]         release-2.0 -> release-2.0
+INFO    ║ ------------------------------------------------------------------------
+INFO    ║ ---- Branches summary ----
+INFO    ║ 3 of 3 pushed successfully, 0 failed
+INFO    ║  - main pushed successfully
+INFO    ║  - 1.0 pushed successfully
+INFO    ║  - 1.1 pushed successfully
+INFO    ║ ---- Tags summary ----
+INFO    ║ 4 of 4 pushed successfully, 0 failed
+INFO    ║  - release-1.0.0 pushed successfully
+INFO    ║  - release-1.0.1 pushed successfully
+INFO    ║  - release-1.1.0 pushed successfully
+INFO    ║  - release-2.0 pushed successfully
+INFO    ║ ------------------------------------------------------------------------
+INFO    ║ push_all.py v2.5.0-rc2 finished at 2021-08-12 15:18:31.846763
+INFO    ║ Elapsed time: 3 seconds
 user@machine [example] $
 ```
 
@@ -381,4 +276,4 @@ Local repository viewed in a Git GUI:
 
 ![gitg view of the example repository](./example.png)
 
-Pushed remote repository: <https://github.com/blackstream-x/svn2git-example>
+Pushed remote repository: <https://github.com/blackstream-x/svn2git-2.5-example>

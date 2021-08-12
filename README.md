@@ -2,24 +2,24 @@
 
 _python-svn2git_ is a translation of the great
 [svn2git](https://github.com/nirvdrum/svn2git) utility to Python 3,
-plus the **unique_commit_authors.py** script for determining all
-commit auhors from the subversion repository.
+plus scripts to determine all commit auhors from the subversion repository,
+and to push the converted git repository to a hosted repository.
 
 ## Requirements
 
 * **Python 3.6** or newer
-* for **svn2git.py**:
-  * git
-  * git-svn (the command `git svn` must be available).
-* for **unique_commit_authors.py**:
-  * svn
+* git
+  git-svn (the command `git svn` must be available).
+* svn
 
-## svn2git.py
+## svn2git.py: Migrate a Subversion repository to Git
 
 The **svn2git.py** script can be used as a drop-in replacement
 for the original **svn2git** command, just requiring Python instead of Ruby.
 
-For now, the original documentation exactly applies here too.
+The original documentation applies here too,
+except for the`--password` option that has been removed
+because it is not supported by git-svn.
 
 The usage message produced by `svn2git.py --help` is:
 
@@ -74,15 +74,25 @@ optional arguments:
                         Rebase the specified branch
 ```
 
-## push_all.py
+## push_all.py: Push a local Git repository to a hosted one
 
 The **push_all.py*** script can be used to push a local git repository to
 a hosted (empty) remote repository as described in
 <https://docs.gitlab.com/ee/user/project/import/svn.html#cut-over-migration-with-svn2git>
-(basically wrapping the commands in the las code block there).
+(basically wrapping the commands in the last code block there).
 
-It features a `--batch-size` option enabling incremental pushes for the case
-there are pack size limits configured in the remote repository.
+If you get a message reading
+
+`fatal: pack exceeds maximum allowed size`
+
+when running this script, then there are pack size limits configured
+on the remote side.
+
+In that case, you should try the `--batch-size` option
+with a value of 500 or 1000.
+This will enable incremental pushes of (maximum) this number of commits,
+and reduce the batch size dynamically if required, thus dramatically improving
+the chance to get your local repository pushed completely.
 
 The usage message produced by `push_all.py --help` is:
 
@@ -113,11 +123,12 @@ optional arguments:
                         Ignore (the lack of) the credential.helper git option.
 ```
 
-## unique_commit_authors.py
+## unique_commit_authors.py: Determine Subversion repository authors
 
 The **unique_commit_authors.py** script examines the log of either
 a subversion repository’s working copy located in the current directory,
-or that of the subversion repository at the specified URL.
+or that of the subversion repository at the specified URL,
+and produces a list of unique commit authors on stdout.
 
 This script requires a Subversion command line client (i.e. **svn**)
 to be installed.
@@ -130,6 +141,7 @@ and use that file as a starting point to create the authors file for the
 The usage message produced by `unique_commit_authors.py --help` is:
 
 ```
+rainer@esplendor [~] $ python-svn2git/unique_commit_authors.py -h
 usage: unique_commit_authors.py [-h] [-q] [-v] [-c CHUNK_SIZE] [-s]
                                 [--svn-command SVN_COMMAND]
                                 [SVN_URL]
@@ -152,10 +164,9 @@ optional arguments:
   --svn-command SVN_COMMAND
                         Subversion command line client executable path.
                         Normally, the default value (svn) is sufficient, but
-                        there might exist cases where the executeable is
-                        stored in a non-standard location not included in the
-                        system path (e.g. /opt/CollabNet_Subversion/bin/svn).
-
+                        there might exist cases where the executable is stored
+                        in a non-standard location not included in the system
+                        path (e.g. /opt/CollabNet_Subversion/bin/svn).
 ```
 
 ## Putting it all together
@@ -168,13 +179,12 @@ optional arguments:
    for your environment – to contain a mapping of each author entry to a
    real name and email in the form
    ```svnauthor = git author name <email address>```
-3. Use **svn2git.py** with the authors text file to create a Git repository
-   with the correct authors.
-4. Optionally: Use **push_all.py** with a remote URL to push your newly
-   created local Git repository to a hosted repository.
+3. Use **svn2git.py** with the authors text file to create a
+   local Git repository with the correct authors.
+4. Use **push_all.py** with a remote URL to push your newly created
+   local Git repository to a hosted repository.
 
-See [example.md](./example.md) for a small example
-(so far still excluding **push_all.py**).
+See [example.md](./example.md) for a small example.
 
 ## Found a bug or got a feature request?
 

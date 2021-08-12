@@ -348,7 +348,7 @@ def __get_arguments():
         default='svn',
         help='Subversion command line client executable path.'
         ' Normally, the default value (%(default)s) is sufficient,'
-        ' but there might exist cases where the executeable is stored'
+        ' but there might exist cases where the executable is stored'
         ' in a non-standard location not included in the system path'
         ' (e.g. /opt/CollabNet_Subversion/bin/svn).')
     argument_parser.add_argument(
