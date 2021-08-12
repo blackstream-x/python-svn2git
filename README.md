@@ -9,7 +9,7 @@ and to push the converted git repository to a hosted repository.
 
 * **Python 3.6** or newer
 * git
-  git-svn (the command `git svn` must be available).
+* git-svn (the command `git svn` must be available).
 * svn
 
 ## svn2git.py: Migrate a Subversion repository to Git
@@ -76,7 +76,7 @@ optional arguments:
 
 ## push_all.py: Push a local Git repository to a hosted one
 
-The **push_all.py*** script can be used to push a local git repository to
+The **push_all.py** script can be used to push a local git repository to
 a hosted (empty) remote repository as described in
 <https://docs.gitlab.com/ee/user/project/import/svn.html#cut-over-migration-with-svn2git>
 (basically wrapping the commands in the last code block there).
