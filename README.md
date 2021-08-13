@@ -18,7 +18,7 @@ The **svn2git.py** script can be used as a drop-in replacement
 for the original **svn2git** command, just requiring Python instead of Ruby.
 
 The original documentation applies here too,
-except for the`--password` option that has been removed
+except for the `--password` option that has been removed
 because it is not supported by git-svn.
 
 The usage message produced by `svn2git.py --help` is:
@@ -80,6 +80,13 @@ The **push_all.py** script can be used to push a local git repository to
 a hosted (empty) remote repository as described in
 <https://docs.gitlab.com/ee/user/project/import/svn.html#cut-over-migration-with-svn2git>
 (basically wrapping the commands in the last code block there).
+
+If the origin URL that was configured using either `git remote add origin`
+or the option `--set-origin` is an HTTP URL (i.e. starts with `http:` or `https:`),
+the script checks if the Git option `credential.helper` has been set,
+and exits if it is not set. Otherwise, you would end up entering your
+credentials over and over again, especially when using the
+`--batch-size` option.
 
 If you get a message reading
 
