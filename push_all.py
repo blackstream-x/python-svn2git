@@ -413,7 +413,7 @@ class FullPush:
         logging.info('---- Branches summary ----')
         logging.info(
             '%s of %s pushed successfully, %s failed',
-            total, successful, failed)
+            successful, total, failed)
         if omitted:
             logging.info('%s branches omitted', omitted)
         #
@@ -443,7 +443,7 @@ class FullPush:
         logging.info('---- Tags summary ----')
         logging.info(
             '%s of %s pushed successfully, %s failed',
-            total, successful, failed)
+            successful, total, failed)
         for tag in self.all_tags:
             if tag in self.tags_failed:
                 logging.info(' - %s push failed', tag)
