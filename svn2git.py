@@ -313,7 +313,7 @@ class Migration:
                     if not legacy_svn_branch_tracking_message_displayed:
                         logging.warning('*' * 68)
                         for line in (
-                                'svn2git warning:,'
+                                'svn2git warning:',
                                 'Tracking remote SVN branches is deprecated.',
                                 'In a future release local branches'
                                 ' will be created without tracking.',
