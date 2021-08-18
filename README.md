@@ -99,7 +99,7 @@ In that case, you should try the `--incremental` option.
 It will enable incremental pushes of maximum 1024 commits
 (or any other number you specify there), reducing the
 effective batch size dynamically if required.
-This improves the chance to get your local repository pushed completely.
+This immensely improves the chance to get your local repository pushed completely.
 
 The usage message produced by `push_all.py --help` is:
 
