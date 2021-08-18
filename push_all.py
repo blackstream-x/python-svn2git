@@ -83,6 +83,8 @@ class FullPush:
         self.branches_failed = {}
         self.branches_pushed = []
         self.tags_failed = []
+        self.failed_commits = []
+        self.pushes_failed = {}
 
     def run(self):
         """Do a full push"""
@@ -320,6 +322,7 @@ class FullPush:
         last_offset = number_to_push
         batch_size = maximum_batch_size
         pushed_commits = 0
+        failed_constellations = []
         while last_offset:
             if batch_size > last_offset:
                 batch_size = last_offset
@@ -329,15 +332,32 @@ class FullPush:
             logging.info(
                 'Trying to push %s commits (up to %s)…',
                 batch_size, commit_id)
-            push_returncode = self.git.push(
-                ORIGIN, f'{commit_id}:refs/heads/{branch_name}',
-                exit_on_error=False)
+            # Check pushes_failed first
+            try:
+                failed_commit_id = self.pushes_failed[(batch_size, commit_id)]
+            except KeyError:
+                push_returncode = self.git.push(
+                    ORIGIN, f'{commit_id}:refs/heads/{branch_name}',
+                    exit_on_error=False)
+            else:
+                logging.error('Same constellation failed before.')
+                # enforce skipping the branch
+                push_returncode = RETURNCODE_ERROR
+                commit_id = failed_commit_id
+                batch_size = 1
+            #
             if push_returncode:
-                logging.info('… failed')
                 if batch_size > 1:
-                    logging.info('Reducing batch size.')
+                    failed_constellations.append((batch_size, commit_id))
+                    logging.info('Failed, reducing batch size.')
                     batch_size = batch_size // 2
                 else:
+                    self.pushes_failed.update(
+                        dict.fromkeys(failed_constellations, commit_id))
+                    self.branches_failed[branch_name] = commit_id
+                    if commit_id not in self.failed_commits:
+                        self.failed_commits.append(commit_id)
+                    #
                     logging.error(
                         'Pushing branch %r failed at commit %s',
                         branch_name,
@@ -346,14 +366,12 @@ class FullPush:
                         '(%s of %s commits pushed successfully before)',
                         pushed_commits,
                         number_to_push)
-                    self.branches_failed[branch_name] = self.get_commit_log(
-                        commit_id)
                     return push_returncode
                 #
             else:
                 last_offset = last_offset - batch_size
                 pushed_commits += batch_size
-                logging.info('… ok')
+                logging.info('OK')
                 # Double batch size (up to maximum)
                 new_batch_size = batch_size * 2
                 if new_batch_size > maximum_batch_size:
@@ -405,6 +423,15 @@ class FullPush:
 
     def show_branches_statistics(self):
         """Show statistics for branches"""
+        if self.failed_commits:
+            logging.error('---- Commits that failed to be pushed ----')
+            output = ('\n' + '-' * 72 + '\n').join(
+                self.get_commit_log(commit_id) for commit_id
+                in self.failed_commits)
+            for line in output.splitlines():
+                logging.error(line)
+            #
+        #
         total = len(self.all_branches)
         failed = len(self.branches_failed)
         successful = len(self.branches_pushed)
@@ -418,7 +445,7 @@ class FullPush:
         #
         for branch in self.all_branches:
             try:
-                failed_commit = self.branches_failed[branch]
+                failed_commit_id = self.branches_failed[branch]
             except KeyError:
                 if branch in self.branches_pushed:
                     logging.info(' - %s pushed successfully', branch)
@@ -428,10 +455,10 @@ class FullPush:
                 #
                 continue
             #
-            logging.error(' - %s push failed at commit:', branch)
-            for line in failed_commit.splitlines():
-                logging.error('     %s', line)
-            #
+            logging.error(
+                ' - %s push failed at commit %s',
+                branch,
+                failed_commit_id)
         #
 
     def show_tags_statistics(self):
