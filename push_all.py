@@ -293,7 +293,7 @@ class FullPush:
         logging.info('Switching to branch %r', branch_name)
         self.git.checkout(branch_name)
         remote_branch = f'{ORIGIN}/{branch_name}'
-        if self.git.showref(
+        if self.git.showref_rc(
                 '--quiet', '--verify', f'refs/remotes/{remote_branch}',
                 exit_on_error=False) > RETURNCODE_OK:
             logging.info(
