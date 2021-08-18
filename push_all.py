@@ -40,17 +40,14 @@ RETURNCODE_ERROR = 1
 ENV = dict(os.environ)
 ENV['LANG'] = 'C'       # Prevent command output translation
 
-# Possible default branch names as suggested by git svn init
-DEFAULT_BRANCH_NAMES = {'development', 'main', 'master', 'trunk'}
-
 ORIGIN = 'origin'
 
 # Git executable
 GIT = 'git'
 
-# Config items
-CI_USER_NAME = 'user.name'
-CI_USER_EMAIL = 'user.email'
+# Defaults
+DEFAULT_BRANCH_NAMES = {'development', 'main', 'master', 'trunk'}
+DEFAULT_MAX_BATCH_SIZE = 1024
 
 SCRIPT_NAME = os.path.basename(__file__)
 
@@ -258,13 +255,13 @@ class FullPush:
         self.all_branches = default_branches + remaining_branches
         self.branches_failed.clear()
         self.branches_pushed.clear()
-        if self.options.batch_size:
+        if self.options.maximum_batch_size:
             # push branches one by one in batches of maximum batch size
             highest_returncode = RETURNCODE_OK
             for current_branch in self.all_branches:
                 push_returncode = self.push_single_branch(
                     current_branch,
-                    maximum_batch_size=self.options.batch_size)
+                    maximum_batch_size=self.options.maximum_batch_size)
                 if push_returncode and self.options.fail_fast:
                     return push_returncode
                 #
@@ -282,7 +279,9 @@ class FullPush:
         #
         return push_returncode
 
-    def push_single_branch(self, branch_name, maximum_batch_size=256):
+    def push_single_branch(self,
+                           branch_name,
+                           maximum_batch_size=DEFAULT_MAX_BATCH_SIZE):
         """Push commits of a single branch.
         Try committing maximum_batch_size commits first,
         but half the batch size on each failure.
@@ -382,7 +381,7 @@ class FullPush:
         """
         self.all_tags = self.git.tag('--list').splitlines()
         self.tags_failed.clear()
-        if self.options.batch_size:
+        if self.options.maximum_batch_size:
             # push tags one by one
             highest_returncode = RETURNCODE_OK
             for current_tag in self.all_tags:
@@ -476,18 +475,21 @@ def __get_arguments():
         help='URL to push to (if omitted,'
         ' the existing URL for origin will be used).')
     argument_parser.add_argument(
-        '--batch-size',
+        '--incremental',
+        dest='maximum_batch_size',
+        metavar='MAXIMUM_BATCH_SIZE',
+        nargs='?',
         type=int,
-        default=0,
-        help='Maximum batch size (the number of commits that will be'
-        ' pushed). Required if the upstream repository rejects a global push'
-        ' with the message "fatal: pack exceeds maximum allowed size".'
-        ' In that case use a value of 500. After each unsuccessful attempt,'
-        ' the batch size will be halved for the current branch'
-        ' (and doubled again after a successful push,'
-        ' up to the given maximum).'
-        ' If this option is omitted or set to zero,'
-        ' a global push will be attempted.')
+        const=DEFAULT_MAX_BATCH_SIZE,
+        help='If the upstream repository rejects a global'
+        ' (i.e. non-incremental) push with the message'
+        ' "fatal: pack exceeds maximum allowed size",'
+        ' use this option to push the repository contents'
+        ' in smaller batches of maximum %(metavar)s'
+        ' commits (default: %(const)s).'
+        ' During the incremental push, the (effective) batch size'
+        ' will be adjusted automatically in the range between 1'
+        ' and %(metavar)s, depending on the success or failure of pushes.')
     argument_parser.add_argument(
         '--fail-fast',
         action='store_true',
@@ -497,9 +499,9 @@ def __get_arguments():
         action='store_true',
         help='Ignore (the lack of) the credential.helper git option.')
     arguments = argument_parser.parse_args()
-    if arguments.batch_size < 0:
+    if arguments.maximum_batch_size < 0:
         gitwrapper.exit_with_error(
-            'Invalid batch size %s!', arguments.batch_size)
+            'Invalid batch size %s!', arguments.maximum_batch_size)
     #
     logging.basicConfig(format=MESSAGE_FORMAT_WITH_LEVELNAME,
                         level=arguments.loglevel)
