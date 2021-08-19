@@ -138,15 +138,15 @@ class DataContainer:
             except KeyError:
                 if item in self.successful_pushes:
                     logging.info(
-                        ' - %s pushed successfully or already up to date',
+                        ' - %r push successful (or remote already up to date)',
                         item)
                 else:
                     reason = self.skipped_pushes.get(item, NO_REASON)
-                    logging.info(' - %s push skipped (%s)', item, reason)
+                    logging.info(' - %r push skipped (%s)', item, reason)
                 #
                 continue
             #
-            logging.error('- %s push failed (%s)', item, cause)
+            logging.error('- %r push failed (%s)', item, cause)
         #
 
 
@@ -324,18 +324,18 @@ class FullPush:
     def get_commit_log(self, commit_id):
         """Return a formatted commit log entry in a form like:
 
-        b9199bd2db8a74daf1115e031c10492f2bc83523
-        Commit author: author name <email address>
-        Commit time:   2021-08-09 18:34:25 +0200
+        Commit b9199bd2db8a74daf1115e031c10492f2bc83523
+        Author: author name <email address>
+        Date:   2021-08-09 18:34:25 +0200
         Added the skeleton of the push_all script (#16)
 
-        (to be printed for the commit on which a push of a branch finally
-         failed)
+        (to be printed for each commit on which a push of a branch
+         eventually failed)
         """
         return self.git.log(
             '-n', '1',
-            '--pretty=format:%H%n'
-            'Commit author: %an <%ae>%nCommit time:   %ci%n%s',
+            '--pretty=format:Commit %H%n'
+            'Author: %an <%ae>%nDate:   %ci%n%s',
             commit_id)
 
     def get_commit_id_before_head(self, offset=0):
@@ -447,7 +447,10 @@ class FullPush:
                 #
                 self.batch_pushes_failed.update(
                     dict.fromkeys(failed_constellations, commit_id))
-                self.branches.failed_pushes[branch_name] = commit_id
+                remaining_commits = number_to_push - pushed_commits
+                self.branches.failed_pushes[branch_name] = \
+                    'at %s, %s commits remain' % (
+                        commit_id, remaining_commits)
                 if commit_id not in self.failed_commits:
                     self.failed_commits.append(commit_id)
                 #
@@ -456,9 +459,8 @@ class FullPush:
                     branch_name,
                     commit_id)
                 logging.error(
-                    '(%s of %s commits have been pushed successfully)',
-                    pushed_commits,
-                    number_to_push)
+                    '(%s of %s commits pushed successfully, %s remain)',
+                    pushed_commits, number_to_push, remaining_commits)
                 return push_returncode
             #
             last_offset = last_offset - batch_size
