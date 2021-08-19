@@ -236,7 +236,7 @@ class FullPush:
             #
         #
         # 3. Push branches
-        original_branch = self.git.branch('--show-current').strip()
+        original_branch = self.get_current_branch()
         branch_result = self.push_branches()
         self.git.checkout(original_branch)
         if branch_result:
@@ -323,6 +323,18 @@ class FullPush:
             f'No remote URL for {ORIGIN} preconfigured and none specified.\n'
             'Please specify a remote URL with --set-origin!')
 
+    def find_branches(self):
+        """Yield local branches,
+        taking care to ignore console color codes and ignoring the
+        '*' character used to indicate the currently selected branch.
+        """
+        for branch in self.git.branch('--list', '--no-color').splitlines():
+            branch = branch.replace('*', '').strip()
+            if branch:
+                yield branch
+            #
+        #
+
     def get_commit_log(self, commit_id):
         """Return a formatted commit log entry in a form like:
 
@@ -352,17 +364,17 @@ class FullPush:
             arguments.append(f'--skip={offset}')
         return self.git.log(*arguments)
 
-    def find_branches(self):
-        """Yield local branches,
-        taking care to ignore console color codes and ignoring the
-        '*' character used to indicate the currently selected branch.
+    def get_current_branch(self):
+        """Drop-in replacement for 'git branch --show-current'
+        for old git versions
         """
         for branch in self.git.branch('--list', '--no-color').splitlines():
-            branch = branch.replace('*', '').strip()
-            if branch:
-                yield branch
+            branch = branch.strip()
+            if branch.startswith('*'):
+                return branch.replace('*', '').strip()
             #
         #
+        raise ValueError('No current branch found')
 
     def get_tag_names(self):
         """Return a list of tag names"""
