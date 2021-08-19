@@ -125,8 +125,8 @@ class DataContainer:
             - self.number_failed
         logging.info('---- %s summary ----', self.term.title())
         logging.info(
-            '%s of %s pushed successfully (or already up to date)',
-            self.number_successful, self.number_total)
+            '%s of %s %s pushed successfully (or already up to date)',
+            self.number_successful, self.number_total, self.term)
         if self.number_failed:
             logging.info('%s %s failed', self.number_failed, self.term)
         #
@@ -139,7 +139,7 @@ class DataContainer:
             except KeyError:
                 if item in self.successful_pushes:
                     logging.info(
-                        ' - %r push successful (or remote already up to date)',
+                        ' + %r push successful (or remote already up to date)',
                         item)
                 else:
                     reason = self.skipped_pushes.get(item, NO_REASON)
@@ -147,7 +147,7 @@ class DataContainer:
                 #
                 continue
             #
-            logging.error('- %r push failed (%s)', item, cause)
+            logging.error(' - %r push failed (%s)', item, cause)
         #
 
 
@@ -364,12 +364,6 @@ class FullPush:
             arguments.append(f'--skip={offset}')
         return self.git.log(*arguments)
 
-    def get_commit_id_by_reference(self, reference):
-        """Return the id (hash) of the commit
-        determined by reference
-        """
-        return self.git.log('-n', '1', '--pretty=format:%H', reference)
-
     def get_current_branch(self):
         """Drop-in replacement for 'git branch --show-current'
         for old git versions
@@ -560,7 +554,8 @@ class FullPush:
             highest_returncode = RETURNCODE_OK
             for current_tag in self.tags.names:
                 tagref = f'refs/tags/{current_tag}'
-                tagged_commit = self.get_commit_id_by_reference(tagref)
+                tagged_commit = self.git.log(
+                    '--first-parent', '--skip=1', '-n', '1', tagref)
                 if tagged_commit in commits_not_pushed:
                     logging.warning(
                         'Skipping %r: %s not in remote repository',
