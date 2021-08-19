@@ -111,11 +111,12 @@ class DataContainer:
         """Set all items neither successful nor failed
         to 'skipped' due to reason
         """
-        skipped_items = [
-            item for item in self.names
-            if item not in self.successful_pushes
-            and item not in self.failed_pushes]
-        self.skipped_pushes.update(dict.fromkeys(skipped_items, reason))
+        for item in self.names:
+            if item not in self.successful_pushes \
+                    and item not in self.failed_pushes:
+                self.skipped_pushes.setdefault(item, reason)
+            #
+        #
 
     def show_statistics(self):
         """Show statistics"""
@@ -178,8 +179,8 @@ class BranchesDataContainer(DataContainer):
                 for line in log_entry.splitlines():
                     logging.error(line)
                 #
+                logging.error(SEPARATOR_LINE)
             #
-            logging.error(SEPARATOR_LINE)
         #
         super().show_statistics()
 
@@ -261,7 +262,6 @@ class FullPush:
 
         self.branches.show_enhanced_statistics(self.failed_commit_logs)
         self.tags.show_statistics()
-        logging.info(SEPARATOR_LINE)
         #
         logging.info(SEPARATOR_LINE)
         finish_time = datetime.datetime.now()
@@ -364,6 +364,12 @@ class FullPush:
             arguments.append(f'--skip={offset}')
         return self.git.log(*arguments)
 
+    def get_commit_id_by_reference(self, reference):
+        """Return the id (hash) of the commit
+        determined by reference
+        """
+        return self.git.log('-n', '1', '--pretty=format:%H', reference)
+
     def get_current_branch(self):
         """Drop-in replacement for 'git branch --show-current'
         for old git versions
@@ -459,9 +465,10 @@ class FullPush:
                     batch_size = batch_size // 2
                     continue
                 #
+                failed_constellations.append((batch_size, commit_id))
                 self.batch_pushes_failed.update(
                     dict.fromkeys(failed_constellations, commit_id))
-                remaining_commits = number_to_push - pushed_commits
+                remaining_commits = last_offset
                 self.branches.failed_pushes[branch_name] = \
                     'at %s, %s commits remain' % (
                         commit_id, remaining_commits)
@@ -540,9 +547,28 @@ class FullPush:
         """
         if self.options.maximum_batch_size:
             # push tags one by one
+            # Determine commits not pushed to remote
+            commits_not_pushed = set()
+            for branch_name in self.branches.names:
+                commits_not_pushed.update(
+                    self.git.log(
+                        '--first-parent',
+                        '--pretty=format:%H',
+                        f'{ORIGIN}/{branch_name}..{branch_name}',
+                        log_output=False).splitlines())
+            #
             highest_returncode = RETURNCODE_OK
             for current_tag in self.tags.names:
                 tagref = f'refs/tags/{current_tag}'
+                tagged_commit = self.get_commit_id_by_reference(tagref)
+                if tagged_commit in commits_not_pushed:
+                    logging.warning(
+                        'Skipping %r: %s not in remote repository',
+                        current_tag, tagged_commit)
+                    self.tags.skipped_pushes[current_tag] = \
+                        'tagged commit not in origin'
+                    continue
+                #
                 push_returncode = self.git.push(
                     ORIGIN, f'{tagref}:{tagref}',
                     exit_on_error=False)
