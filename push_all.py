@@ -537,6 +537,8 @@ class FullPush:
                 if push_returncode:
                     self.tags.failed_pushes[current_tag] = \
                         f'returncode: {push_returncode}'
+                else:
+                    self.tags.successful_pushes.append(current_tag)
                 #
                 highest_returncode = max(push_returncode, highest_returncode)
             #
