@@ -236,7 +236,9 @@ class FullPush:
             #
         #
         # 3. Push branches
+        original_branch = self.git.branch('--show-current').strip()
         branch_result = self.push_branches()
+        self.git.checkout(original_branch)
         if branch_result:
             logging.error(SEPARATOR_LINE)
             if not self.branches.successful_pushes:
