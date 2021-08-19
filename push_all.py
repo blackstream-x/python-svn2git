@@ -555,7 +555,11 @@ class FullPush:
             for current_tag in self.tags.names:
                 tagref = f'refs/tags/{current_tag}'
                 tagged_commit = self.git.log(
-                    '--first-parent', '--skip=1', '-n', '1', tagref)
+                    '--first-parent',
+                    '--pretty=format:%H',
+                    '--skip=1',
+                    '-n', '1',
+                    tagref)
                 if tagged_commit in commits_not_pushed:
                     logging.warning(
                         'Skipping %r: %s not in remote repository',
