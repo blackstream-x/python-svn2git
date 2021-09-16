@@ -221,43 +221,53 @@ class FullPush:
         except ValueError as error:
             gitwrapper.exit_with_error(str(error))
         #
-        # 2. Check for the credential.helper config
-        if not self.options.ignore_missing_credential_helper:
-            if remote_url.startswith('http') and not self.git.config.get(
-                    'credential.helper', exit_on_error=False, scope=None):
-                gitwrapper.exit_with_error(
-                    'The credential.helper git option is not set.\n'
-                    'With HTTP based remotes, it is strongly advised'
-                    ' to use it,\n'
-                    'otherwise you might end up answering username'
-                    ' and password questions repeatedly.\n'
-                    'Set that git option or specify the script option\n'
-                    '  --ignore-missing-credential-helper\n'
-                    'to bypass this check.')
+        # 2. Do the pushes
+        if self.options.maximum_batch_size:
             #
-        #
-        # 3. Push branches
-        original_branch = self.get_current_branch()
-        branch_result = self.push_branches()
-        self.git.checkout(original_branch)
-        if branch_result:
-            logging.error(SEPARATOR_LINE)
-            if not self.branches.successful_pushes:
-                gitwrapper.exit_with_error('All branch pushes failed!')
+            # 2a. Push branches and tags incrementally
+            # 2a.1 Check for the credential.helper config
+            if not self.options.ignore_missing_credential_helper:
+                if remote_url.startswith('http') and not self.git.config.get(
+                        'credential.helper', exit_on_error=False, scope=None):
+                    gitwrapper.exit_with_error(
+                        'The credential.helper git option is not set.\n'
+                        'With HTTP based remotes, it is strongly advised'
+                        ' to use it,\n'
+                        'otherwise you might end up answering username'
+                        ' and password questions repeatedly.\n'
+                        'Set that git option or specify the script option\n'
+                        '  --ignore-missing-credential-helper\n'
+                        'to bypass this check.')
+                #
             #
-            if self.options.fail_fast:
-                logging.error('Not all branches could be pushed.')
-                self.branches.show_enhanced_statistics(self.failed_commit_logs)
+            # 2a.2 Push branches
+            original_branch = self.get_current_branch()
+            branch_result = self.push_branches()
+            self.git.checkout(original_branch)
+            if branch_result:
                 logging.error(SEPARATOR_LINE)
-                gitwrapper.exit_with_error(
-                    'Run this script again without the --fail-fast option\n'
-                    'to push the tags')
+                if not self.branches.successful_pushes:
+                    gitwrapper.exit_with_error('All branch pushes failed!')
+                #
+                if self.options.fail_fast:
+                    logging.error('Not all branches could be pushed.')
+                    self.branches.show_enhanced_statistics(
+                        self.failed_commit_logs)
+                    logging.error(SEPARATOR_LINE)
+                    gitwrapper.exit_with_error(
+                        'Run this script again without the'
+                        '--fail-fast option\n'
+                        'to push the tags')
+                #
             #
+            # 2a.3 Push tags
+            final_result = self.push_tags()
+        else:
+            #
+            # 2b. Push branches and tags globally
+            final_result = self.push_everything_globally()
         #
-        # 4. Push tags
-        tags_result = self.push_tags()
-        #
-        # 5. Output results
+        # 3. Output results
         logging.info(SEPARATOR_LINE)
 
         self.branches.show_enhanced_statistics(self.failed_commit_logs)
@@ -272,7 +282,7 @@ class FullPush:
             finish_time)
         duration = (finish_time - start_time).total_seconds()
         logging.info('Elapsed time: %d seconds', duration)
-        return tags_result
+        return final_result
 
     @property
     def failed_commit_logs(self):
@@ -381,33 +391,53 @@ class FullPush:
         return self.git.tag('--list').splitlines()
 
     def push_branches(self):
-        """Push all branches.
+        """Push all branches,
+        one by one in batches of maximum batch size.
+
+        Return RETURNCODE_OK if everything went fine,
+        or RETURNCODE_ERROR on any errors
+        """
+        if not self.options.maximum_batch_size:
+            raise ValueError(
+                'Wrong method, use push_everything_globally()!')
+        #
+        highest_returncode = RETURNCODE_OK
+        for current_branch in self.branches.names:
+            push_returncode = self.push_single_branch(
+                current_branch)
+            if push_returncode and self.options.fail_fast:
+                self.branches.skip_remaining(reason='previous_errors')
+                return push_returncode
+            #
+            highest_returncode = max(push_returncode, highest_returncode)
+        #
+        return highest_returncode
+
+    def push_everything_globally(self):
+        """Push branches and tags incrementally.
 
         Return RETURNCODE_OK if everything went fine,
         or RETURNCODE_ERROR on any errors
         """
         if self.options.maximum_batch_size:
-            # push branches one by one in batches of maximum batch size
-            highest_returncode = RETURNCODE_OK
-            for current_branch in self.branches.names:
-                push_returncode = self.push_single_branch(
-                    current_branch)
-                if push_returncode and self.options.fail_fast:
-                    self.branches.skip_remaining(reason='previous_errors')
-                    return push_returncode
-                #
-                highest_returncode = max(push_returncode, highest_returncode)
-            #
-            return highest_returncode
+            raise ValueError(
+                'Wrong method, use push_branches() and push_tags()!')
         #
-        push_returncode = self.git.push(
+        branches_returncode = self.git.push(
             '-u', 'origin', '--all', exit_on_error=False)
-        if push_returncode:
+        if branches_returncode:
             self.branches.set_all_failed(cause='global push failed')
-        else:
-            self.branches.set_all_successful()
+            return branches_returncode
         #
-        return push_returncode
+        self.branches.set_all_successful()
+        tags_returncode = self.git.push(
+            '-u', 'origin', '--tags', exit_on_error=False)
+        if tags_returncode:
+            self.tags.set_all_failed()
+        else:
+            self.tags.set_all_successful()
+        #
+        return tags_returncode
 
     def push_incrementally(self, branch_name, number_to_push):
         """Push number_to_push commits incrementally,
@@ -535,60 +565,53 @@ class FullPush:
         return self.push_incrementally(branch_name, number_to_push)
 
     def push_tags(self):
-        """Push all tags.
+        """Push all tags, one by one
 
         Return the highest returncode encountered
         """
-        if self.options.maximum_batch_size:
-            # push tags one by one
-            # Determine commits not pushed to remote
-            commits_not_pushed = set()
-            for branch_name in self.branches.names:
-                commits_not_pushed.update(
-                    self.git.log(
-                        '--first-parent',
-                        '--pretty=format:%H',
-                        f'{ORIGIN}/{branch_name}..{branch_name}',
-                        log_output=False).splitlines())
-            #
-            highest_returncode = RETURNCODE_OK
-            for current_tag in self.tags.names:
-                tagref = f'refs/tags/{current_tag}'
-                tagged_commit = self.git.log(
+        if not self.options.maximum_batch_size:
+            raise ValueError(
+                'Wrong method, use push_everything_globally()!')
+        #
+        # Determine commits not pushed to remote
+        commits_not_pushed = set()
+        for branch_name in self.branches.names:
+            commits_not_pushed.update(
+                self.git.log(
                     '--first-parent',
                     '--pretty=format:%H',
-                    '--skip=1',
-                    '-n', '1',
-                    tagref)
-                if tagged_commit in commits_not_pushed:
-                    logging.warning(
-                        'Skipping %r: %s not in remote repository',
-                        current_tag, tagged_commit)
-                    self.tags.skipped_pushes[current_tag] = \
-                        'tagged commit not in origin'
-                    continue
-                #
-                push_returncode = self.git.push(
-                    ORIGIN, f'{tagref}:{tagref}',
-                    exit_on_error=False)
-                if push_returncode:
-                    self.tags.failed_pushes[current_tag] = \
-                        f'returncode: {push_returncode}'
-                else:
-                    self.tags.successful_pushes.append(current_tag)
-                #
-                highest_returncode = max(push_returncode, highest_returncode)
+                    f'{ORIGIN}/{branch_name}..{branch_name}',
+                    log_output=False).splitlines())
+        #
+        highest_returncode = RETURNCODE_OK
+        for current_tag in self.tags.names:
+            tagref = f'refs/tags/{current_tag}'
+            tagged_commit = self.git.log(
+                '--first-parent',
+                '--pretty=format:%H',
+                '--skip=1',
+                '-n', '1',
+                tagref)
+            if tagged_commit in commits_not_pushed:
+                logging.warning(
+                    'Skipping %r: %s not in remote repository',
+                    current_tag, tagged_commit)
+                self.tags.skipped_pushes[current_tag] = \
+                    'tagged commit not in origin'
+                continue
             #
-            return highest_returncode
+            push_returncode = self.git.push(
+                ORIGIN, f'{tagref}:{tagref}',
+                exit_on_error=False)
+            if push_returncode:
+                self.tags.failed_pushes[current_tag] = \
+                    f'returncode: {push_returncode}'
+            else:
+                self.tags.successful_pushes.append(current_tag)
+            #
+            highest_returncode = max(push_returncode, highest_returncode)
         #
-        push_returncode = self.git.push(
-            '-u', 'origin', '--tags', exit_on_error=False)
-        if push_returncode:
-            self.tags.set_all_failed()
-        else:
-            self.tags.set_all_successful()
-        #
-        return push_returncode
+        return highest_returncode
 
 
 #
