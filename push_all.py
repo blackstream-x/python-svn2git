@@ -424,14 +424,14 @@ class FullPush:
                 'Wrong method, use push_branches() and push_tags()!')
         #
         branches_returncode = self.git.push(
-            '-u', 'origin', '--all', exit_on_error=False)
+            '-u', ORIGIN, '--all', exit_on_error=False)
         if branches_returncode:
             self.branches.set_all_failed(cause='global push failed')
             return branches_returncode
         #
         self.branches.set_all_successful()
         tags_returncode = self.git.push(
-            '-u', 'origin', '--tags', exit_on_error=False)
+            '-u', ORIGIN, '--tags', exit_on_error=False)
         if tags_returncode:
             self.tags.set_all_failed()
         else:
