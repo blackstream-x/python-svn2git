@@ -86,7 +86,7 @@ or the option `--set-origin` is an HTTP URL (i.e. starts with `http:` or `https:
 the script checks if the Git option `credential.helper` has been set,
 and exits if it is not set. Otherwise, you would end up entering your
 credentials over and over again, especially when using the
-`--batch-size` option.
+`--incremental` option.
 
 If you get a message reading
 
@@ -95,17 +95,18 @@ If you get a message reading
 when running this script, then there are pack size limits configured
 on the remote side.
 
-In that case, you should try the `--batch-size` option
-with a value of 500 or 1000.
-This will enable incremental pushes of (maximum) this number of commits,
-and reduce the batch size dynamically if required, thus dramatically improving
-the chance to get your local repository pushed completely.
+In that case, you should try the `--incremental` option.
+It will enable incremental pushes of maximum 1024 commits
+(or any other number you specify there), reducing the
+effective batch size dynamically if required.
+This immensely improves the chance to get your local repository pushed completely.
 
 The usage message produced by `push_all.py --help` is:
 
 ```
-usage: push_all.py [-h] [-v] [--set-origin GIT_URL] [--batch-size BATCH_SIZE]
-                   [--fail-fast] [--ignore-missing-credential-helper]
+usage: push_all.py [-h] [-v] [--set-origin GIT_URL]
+                   [--incremental [MAXIMUM_BATCH_SIZE]] [--fail-fast]
+                   [--ignore-missing-credential-helper]
 
 Push the contents of a local Git repository to its origin URL
 
@@ -114,16 +115,16 @@ optional arguments:
   -v, --verbose         Output all messages including debug level
   --set-origin GIT_URL  URL to push to (if omitted, the existing URL for
                         origin will be used).
-  --batch-size BATCH_SIZE
-                        Maximum batch size (the number of commits that will be
-                        pushed). Required if the upstream repository rejects a
-                        global push with the message "fatal: pack exceeds
-                        maximum allowed size". In that case use a value of
-                        500. After each unsuccessful attempt, the batch size
-                        will be halved for the current branch (and doubled
-                        again after a successful push, up to the given
-                        maximum). If this option is omitted or set to zero, a
-                        global push will be attempted.
+  --incremental [MAXIMUM_BATCH_SIZE]
+                        If the upstream repository rejects a global (i.e. non-
+                        incremental) push with the message "fatal: pack
+                        exceeds maximum allowed size", use this option to push
+                        the repository contents in smaller batches of maximum
+                        MAXIMUM_BATCH_SIZE commits (default: 1024). During the
+                        incremental push, the (effective) batch size will be
+                        adjusted automatically in the range between 1 and
+                        MAXIMUM_BATCH_SIZE, depending on the success or
+                        failure of pushes.
   --fail-fast           Exit directly after the first branch failed to be
                         pushed.
   --ignore-missing-credential-helper
@@ -148,7 +149,6 @@ and use that file as a starting point to create the authors file for the
 The usage message produced by `unique_commit_authors.py --help` is:
 
 ```
-rainer@esplendor [~] $ python-svn2git/unique_commit_authors.py -h
 usage: unique_commit_authors.py [-h] [-q] [-v] [-c CHUNK_SIZE] [-s]
                                 [--svn-command SVN_COMMAND]
                                 [SVN_URL]

@@ -252,7 +252,7 @@ class GitWrapper(BaseGitWrapper):
         """
         return self.get_returncode('push', *arguments, **kwargs)
 
-    def showref(self, *arguments, **kwargs):
+    def showref_rc(self, *arguments, **kwargs):
         """git show-ref + arguments
         Passthru output and return returncode
         """
@@ -301,6 +301,12 @@ class GitWrapper(BaseGitWrapper):
         Capture stderr and stdout and return them combined
         """
         return self.get_output('remote', *arguments, **kwargs)
+
+    def showref_output(self, *arguments, **kwargs):
+        """git show-ref + arguments
+        Capture stderr and stdout and return them combined
+        """
+        return self.get_output('show-ref', *arguments, **kwargs)
 
     def status(self, *arguments, **kwargs):
         """git status + arguments
